@@ -17,6 +17,10 @@
 | 全仓库 | [`AGENTS.md`](AGENTS.md) | 指导层级、索引和维护要求 |
 | 全局规范目录 | [`specs/AGENTS.md`](specs/AGENTS.md) | `specs/` 内容边界与维护方式 |
 | 全局开发规则 | [`specs/GLOBAL_RULES.md`](specs/GLOBAL_RULES.md) | 架构、实现、实验、验证与协作规则 |
+| Walker2d 环境契约 | [`specs/MO_WALKER2D_CONTRACT.md`](specs/MO_WALKER2D_CONTRACT.md) | 原始 PD-MORL 环境语义与当前复现边界 |
+| 项目 Python 包 | [`pmo_evorl/AGENTS.md`](pmo_evorl/AGENTS.md) | PD-MORL 扩展的代码边界与验证规则 |
+| 环境模块 | [`pmo_evorl/envs/AGENTS.md`](pmo_evorl/envs/AGENTS.md) | 多目标环境的契约和验证方法 |
+| 测试 | [`tests/AGENTS.md`](tests/AGENTS.md) | 最小可运行回归检查 |
 
 ## 新模块落地规则
 
@@ -37,4 +41,3 @@
 - 新增全局约束时，写入 `specs/` 中合适的规范，并从本文件建立索引。
 - 删除或移动规范、模块时，必须清理所有失效引用。
 - 代码、配置、测试和文档以本仓库为唯一编辑源；实验室服务器用于运行与保存大型输出。
-
