@@ -1,0 +1,11 @@
+/evorl/
+/outputs/
+/multirun/
+/checkpoints/
+/wandb/
+__pycache__/
+*.py[cod]
+*.pkl
+*.pt
+*.ckpt
+
