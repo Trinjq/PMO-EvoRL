@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 import mujoco
 
-from pmo_evorl.envs import MOWalker2d
+from pmo_evorl.envs import MOWalker2d, create_mo_walker2d_env
 
 
 def main() -> None:
@@ -28,9 +28,9 @@ def main() -> None:
     assert next_state.reward.shape == (2,)
     assert bool(jnp.allclose(next_state.reward, expected))
 
-    keys = jax.random.split(jax.random.PRNGKey(1), 32)
-    states = jax.jit(jax.vmap(env.reset))(keys)
-    next_states = jax.jit(jax.vmap(env.step))(
+    wrapped_env = create_mo_walker2d_env(num_envs=32)
+    states = jax.jit(wrapped_env.reset)(jax.random.PRNGKey(1))
+    next_states = jax.jit(wrapped_env.step)(
         states, jnp.zeros((32, env.action_size))
     )
     assert next_states.obs.shape == (32, 17)
