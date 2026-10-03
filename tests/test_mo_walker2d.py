@@ -25,7 +25,15 @@ def main() -> None:
     )
     assert next_state.reward.shape == (2,)
     assert bool(jnp.allclose(next_state.reward, expected))
-    print("MOWalker2d contract check passed:", next_state.reward)
+
+    keys = jax.random.split(jax.random.PRNGKey(1), 32)
+    states = jax.jit(jax.vmap(env.reset))(keys)
+    next_states = jax.jit(jax.vmap(env.step))(
+        states, jnp.zeros((32, env.action_size))
+    )
+    assert next_states.obs.shape == (32, 17)
+    assert next_states.reward.shape == (32, 2)
+    print("MOWalker2d single and 32-env checks passed:", next_state.reward)
 
 
 if __name__ == "__main__":

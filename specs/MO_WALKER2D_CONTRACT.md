@@ -31,7 +31,7 @@
 在实验室环境执行：
 
 ```bash
-JAX_DEFAULT_MATMUL_PRECISION=highest python tests/test_mo_walker2d.py
+PYTHONPATH=. JAX_DEFAULT_MATMUL_PRECISION=highest python tests/test_mo_walker2d.py
 ```
 
 检查重置/单步的 JIT 执行、形状、动作裁剪和二维奖励公式。
