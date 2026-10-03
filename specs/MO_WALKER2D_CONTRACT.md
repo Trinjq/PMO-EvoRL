@@ -26,9 +26,10 @@ MJX 与原 CPU MuJoCo 版本仍可能因求解器实现和浮点误差产生轨�
 
 ## 输入输出
 
-- `reset(key) -> State`：`obs.shape == (17,)`，`reward.shape == (2,)`。
+- 裸环境 `reset(key) -> State`：`obs.shape == (17,)`，`reward.shape == (2,)`。
 - `step(state, action) -> State`：`action.shape == (6,)`，输出二维 `reward=[speed, energy]`。
-- 并行化后在最前方增加环境批次维；奖励最后一维始终是目标维。
+- EvoRL 训练入口输出 `obs.state [B,17]`、`obs.preference [B,2]` 和 `reward [B,2]`。
+- 并行化后在最前方增加环境批次维；奖励最后一维始终是目标维。偏好在 episode 内保持不变，自动重置时从对应虚拟 Worker 的子空间重新采样。
 
 ## 最小验证
 

@@ -28,14 +28,21 @@ def main() -> None:
     assert next_state.reward.shape == (2,)
     assert bool(jnp.allclose(next_state.reward, expected))
 
-    wrapped_env = create_mo_walker2d_env(num_envs=32)
+    wrapped_env = create_mo_walker2d_env(num_envs=20)
     states = jax.jit(wrapped_env.reset)(jax.random.PRNGKey(1))
     next_states = jax.jit(wrapped_env.step)(
-        states, jnp.zeros((32, env.action_size))
+        states, jnp.zeros((20, env.action_size))
     )
-    assert next_states.obs.shape == (32, 17)
-    assert next_states.reward.shape == (32, 2)
-    print("MJX MOWalker2d single and 32-env checks passed:", next_state.reward)
+    assert next_states.obs.state.shape == (20, 17)
+    assert next_states.obs.preference.shape == (20, 2)
+    assert next_states.reward.shape == (20, 2)
+    assert bool(jnp.allclose(next_states.obs.preference.sum(-1), 1.0))
+    assert bool((next_states.obs.preference[:2, 0] <= 0.1).all())
+    assert bool((next_states.obs.preference[-2:, 0] >= 0.901).all())
+    assert bool(
+        jnp.allclose(next_states.obs.preference, states.obs.preference)
+    )
+    print("MJX MOWalker2d single and preference-batch checks passed")
 
 
 if __name__ == "__main__":
