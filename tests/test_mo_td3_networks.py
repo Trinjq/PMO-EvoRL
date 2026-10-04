@@ -14,6 +14,7 @@ from pmo_evorl.interpolator import (
     update_key_objectives,
 )
 from pmo_evorl.networks import PreferenceActor, TwinVectorCritic
+from pmo_evorl.metrics import hypervolume_2d, sparsity
 from pmo_evorl.mo_td3 import (
     actor_loss,
     critic_loss,
@@ -101,6 +102,10 @@ def main() -> None:
     assert float(updated_keys[0, 1]) == float(candidate_keys[0, 1])
     assert bool(jnp.array_equal(updated_keys[1], WALKER2D_KEY_OBJECTIVES[1]))
     assert bool(jnp.allclose(projected_keys.sum(axis=-1), 1.0))
+
+    pareto_points = jnp.array([[1.0, 5.0], [3.0, 2.0], [2.0, 1.0]])
+    assert bool(jnp.isclose(hypervolume_2d(pareto_points), 9.0))
+    assert bool(jnp.isclose(sparsity(pareto_points), 13.0))
 
     class DummySpace:
         def __init__(self, value):

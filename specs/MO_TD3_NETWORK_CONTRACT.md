@@ -54,3 +54,7 @@ EvoRL 标准 Actor 只输入观测，Critic 输出标量 Q。本项目不改动�
 - 原源码在 Replay 不足 `2 * batch_size * weight_num = 1536` 条时跳过学习；10 环境批量采样要求取可整除的首次阈值1540。
 - 原源码 `start_timesteps=10000` 只控制每个采样进程何时开始写入3条偏好重标记样本；10个进程对应全局 `her_start_timesteps=100000`，它不是学习启动阈值。
 - 每收集10条原始 transition，源码执行10次 Critic 更新；`policy_freq=10`，因此执行1次 Actor 与 Target 更新。基线采用 `num_envs=10`、`rollout_length=1`、`actor_update_interval=10`、`num_updates_per_iter=1` 保持该比例。
+
+## Pareto 评估
+
+周期评估使用源码的 `0.005` 偏好步长，共201个二维偏好，每个偏好运行3个确定性 episode。迁移版把这些 episode 作为 GPU 并行 MJX 环境执行，累积终止前的 Vector Reward，并以零向量为参考点计算二维最大化 Hypervolume；Sparsity 沿用源码对非支配目标点各维相邻间距平方和的定义。

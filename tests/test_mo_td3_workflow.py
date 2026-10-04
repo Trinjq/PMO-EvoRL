@@ -37,7 +37,8 @@ def main() -> None:
             "fold_iters": 1,
             "total_timesteps": 30,
             "eval_interval": 100,
-            "eval_episodes": 10,
+            "eval_episodes": 1,
+            "pareto_step_size": 0.5,
         }
     )
     workflow = MOTD3Workflow.build_from_config(config, enable_jit=True)
@@ -57,6 +58,9 @@ def main() -> None:
     assert bool(jnp.isfinite(metrics.critic_loss))
     assert bool(jnp.isfinite(metrics.actor_loss))
     assert int(state.agent_state.extra_state.interpolator_updates) == 1
+    eval_metrics, state = workflow.evaluate(state)
+    assert bool(jnp.isfinite(eval_metrics.hypervolume))
+    assert bool(jnp.isfinite(eval_metrics.sparsity))
     print(
         "MO-TD3 workflow check passed:",
         float(metrics.critic_loss),

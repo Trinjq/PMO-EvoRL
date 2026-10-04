@@ -30,7 +30,8 @@ optimizer:
 total_timesteps: 10000000
 fold_iters: 1000
 eval_interval: 50000
-eval_episodes: 10
+eval_episodes: 3
+pareto_step_size: 0.005
 seed: 1
 
 output_dir: outputs/mo_td3_walker2d

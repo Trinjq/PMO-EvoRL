@@ -3,16 +3,24 @@
 import jax
 import jax.numpy as jnp
 import optax
+import chex
 
 from evorl.algorithms.td3 import TD3Workflow
 from evorl.evaluators import Evaluator
+from evorl.metrics import MetricBase
 from evorl.sample_batch import SampleBatch
 from evorl.types import PyTreeDict
 
 from pmo_evorl.envs import create_mo_walker2d_env
 from pmo_evorl.interpolator import KEY_PREFERENCES, update_key_objectives
+from pmo_evorl.metrics import hypervolume_2d, sparsity
 from pmo_evorl.mo_td3 import MOTD3Agent, PreferenceHERReplayBuffer
 from pmo_evorl.networks import PreferenceActor, TwinVectorCritic
+
+
+class MORLEvaluateMetric(MetricBase):
+    hypervolume: chex.Array
+    sparsity: chex.Array
 
 
 class MOTD3Workflow(TD3Workflow):
@@ -69,6 +77,23 @@ class MOTD3Workflow(TD3Workflow):
         )
         workflow.key_eval_env = key_env
         workflow.key_preferences = key_preferences
+
+        preference_count = round(1.0 / config.pareto_step_size) + 1
+        pareto_preferences = jnp.stack(
+            (
+                jnp.linspace(0.0, 1.0, preference_count),
+                jnp.linspace(1.0, 0.0, preference_count),
+            ),
+            axis=-1,
+        )
+        workflow.pareto_preferences = jnp.repeat(
+            pareto_preferences, config.eval_episodes, axis=0
+        )
+        workflow.pareto_eval_env = create_mo_walker2d_env(
+            len(workflow.pareto_preferences),
+            num_preference_workers=1,
+            autoreset=False,
+        )
         return workflow
 
     def _setup_replaybuffer(self, key):
@@ -112,17 +137,28 @@ class MOTD3Workflow(TD3Workflow):
         return train_metrics, state
 
     def _evaluate_key_objectives(self, agent_state):
-        env_state = self.key_eval_env.reset(jax.random.PRNGKey(0))
-        returns = jnp.zeros((len(self.key_preferences), 2))
-        finished = jnp.zeros(len(self.key_preferences), dtype=bool)
+        returns = self._evaluate_preferences(
+            agent_state,
+            self.key_eval_env,
+            self.key_preferences,
+            jax.random.PRNGKey(0),
+        )
+        return returns.reshape(
+            3, self.config.interpolator_eval_episodes, 2
+        ).mean(axis=1)
+
+    def _evaluate_preferences(self, agent_state, env, preferences, reset_key):
+        env_state = env.reset(reset_key)
+        returns = jnp.zeros((len(preferences), 2))
+        finished = jnp.zeros(len(preferences), dtype=bool)
 
         def evaluate_step(carry, key):
             env_state, returns, finished = carry
-            obs = env_state.obs.replace(preference=self.key_preferences)
+            obs = env_state.obs.replace(preference=preferences)
             actions, _ = self.agent.evaluate_actions(
                 agent_state, SampleBatch(obs=obs), key
             )
-            next_state = self.key_eval_env.step(env_state, actions)
+            next_state = env.step(env_state, actions)
             returns += (~finished)[:, None] * next_state.reward
             finished |= next_state.done.astype(bool)
             return (next_state, returns, finished), None
@@ -131,6 +167,19 @@ class MOTD3Workflow(TD3Workflow):
         (_, returns, _), _ = jax.lax.scan(
             evaluate_step, (env_state, returns, finished), keys
         )
-        return returns.reshape(
-            3, self.config.interpolator_eval_episodes, 2
-        ).mean(axis=1)
+        return returns
+
+    def evaluate(self, state):
+        key, _ = jax.random.split(state.key)
+        returns = self._evaluate_preferences(
+            state.agent_state,
+            self.pareto_eval_env,
+            self.pareto_preferences,
+            jax.random.PRNGKey(11),
+        )
+        objectives = returns.reshape(-1, self.config.eval_episodes, 2).mean(1)
+        metrics = MORLEvaluateMetric(
+            hypervolume=hypervolume_2d(objectives),
+            sparsity=sparsity(objectives),
+        )
+        return metrics, state.replace(key=key)
