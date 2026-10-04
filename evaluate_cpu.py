@@ -15,6 +15,7 @@ _XML_PATH = (
 
 
 def load_actor_layers(checkpoint: Path) -> list[tuple[np.ndarray, np.ndarray]]:
+    checkpoint = checkpoint.resolve()
     item = checkpoint / "default" if (checkpoint / "default").is_dir() else checkpoint
     with ocp.StandardCheckpointer() as checkpointer:
         restored = checkpointer.restore(item)
