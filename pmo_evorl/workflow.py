@@ -5,9 +5,11 @@ import jax.numpy as jnp
 import optax
 import chex
 
+from evorl.algorithms.offpolicy_utils import skip_replay_buffer_state
 from evorl.algorithms.td3 import TD3Workflow
 from evorl.evaluators import Evaluator
 from evorl.metrics import MetricBase
+from evorl.recorders import add_prefix
 from evorl.sample_batch import SampleBatch
 from evorl.types import PyTreeDict
 
@@ -183,3 +185,36 @@ class MOTD3Workflow(TD3Workflow):
             sparsity=sparsity(objectives),
         )
         return metrics, state.replace(key=key)
+
+    def learn(self, state):
+        """Train until the raw-transition budget and always finalize once."""
+        next_eval = (
+            state.metrics.iterations.tolist() // self.config.eval_interval + 1
+        ) * self.config.eval_interval
+
+        while state.metrics.sampled_timesteps.tolist() < self.config.total_timesteps:
+            train_metrics, state = self._multi_steps(state)
+            iterations = state.metrics.iterations.tolist()
+            is_final = (
+                state.metrics.sampled_timesteps.tolist()
+                >= self.config.total_timesteps
+            )
+            self.recorder.write(train_metrics.to_local_dict(), iterations)
+            self.recorder.write(state.metrics.to_local_dict(), iterations)
+
+            if iterations >= next_eval or is_final:
+                eval_metrics, state = self.evaluate(state)
+                self.recorder.write(
+                    add_prefix(eval_metrics.to_local_dict(), "eval"), iterations
+                )
+                while next_eval <= iterations:
+                    next_eval += self.config.eval_interval
+
+            saved_state = state
+            if not self.config.save_replay_buffer:
+                saved_state = skip_replay_buffer_state(saved_state)
+            self.checkpoint_manager.save(
+                iterations, saved_state, force=is_final
+            )
+
+        return state

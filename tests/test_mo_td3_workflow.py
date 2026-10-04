@@ -35,7 +35,7 @@ def main() -> None:
             "checkpoint": {"enable": False},
             "save_replay_buffer": False,
             "fold_iters": 1,
-            "total_timesteps": 30,
+            "total_timesteps": 40,
             "eval_interval": 100,
             "eval_episodes": 1,
             "pareto_step_size": 0.5,
@@ -61,6 +61,8 @@ def main() -> None:
     eval_metrics, state = workflow.evaluate(state)
     assert bool(jnp.isfinite(eval_metrics.hypervolume))
     assert bool(jnp.isfinite(eval_metrics.sparsity))
+    state = workflow.learn(state)
+    assert int(state.metrics.sampled_timesteps) == 40
     print(
         "MO-TD3 workflow check passed:",
         float(metrics.critic_loss),

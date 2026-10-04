@@ -23,6 +23,7 @@ def main() -> None:
             parser.error("--num-envs must be divisible by num_preference_workers")
         config.num_envs = args.num_envs
         config.num_updates_per_iter = args.num_envs // 10
+        config.fold_iters = min(config.fold_iters, 100)
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
