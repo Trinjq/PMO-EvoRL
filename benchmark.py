@@ -50,6 +50,10 @@ def main() -> None:
         state = workflow.init(jax.random.PRNGKey(config.seed))
         jax.block_until_ready(state.metrics.sampled_timesteps)
         init_seconds = time.perf_counter() - init_started
+        print(
+            {"build_seconds": build_seconds, "init_seconds": init_seconds},
+            flush=True,
+        )
         if args.key_eval:
             state = workflow._update_interpolator(state, jnp.uint32(2))
             jax.block_until_ready(
@@ -67,6 +71,9 @@ def main() -> None:
             metrics, state = workflow.evaluate(state)
             jax.block_until_ready(metrics.hypervolume)
             warmup_seconds = time.perf_counter() - warmup_started
+            print(
+                {"first_evaluation_seconds": warmup_seconds}, flush=True
+            )
             started = time.perf_counter()
             metrics, state = workflow.evaluate(state)
             jax.block_until_ready(metrics.hypervolume)

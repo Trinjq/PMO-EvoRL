@@ -162,20 +162,23 @@ class MOTD3Workflow(TD3Workflow):
         returns = jnp.zeros((len(preferences), 2))
         finished = jnp.zeros(len(preferences), dtype=bool)
 
-        def evaluate_step(carry, key):
-            env_state, returns, finished = carry
+        def evaluate_step(carry):
+            step, env_state, returns, finished = carry
             obs = env_state.obs.replace(preference=preferences)
             actions, _ = self.agent.evaluate_actions(
-                agent_state, SampleBatch(obs=obs), key
+                agent_state,
+                SampleBatch(obs=obs),
+                jax.random.fold_in(jax.random.PRNGKey(1), step),
             )
             next_state = env.step(env_state, actions)
             returns += (~finished)[:, None] * next_state.reward
             finished |= next_state.done.astype(bool)
-            return (next_state, returns, finished), None
+            return step + 1, next_state, returns, finished
 
-        keys = jax.random.split(jax.random.PRNGKey(1), 500)
-        (_, returns, _), _ = jax.lax.scan(
-            evaluate_step, (env_state, returns, finished), keys
+        _, _, returns, _ = jax.lax.while_loop(
+            lambda carry: (carry[0] < 500) & ~jnp.all(carry[3]),
+            evaluate_step,
+            (jnp.zeros((), dtype=jnp.uint32), env_state, returns, finished),
         )
         return returns
 
