@@ -4,6 +4,7 @@ import argparse
 import time
 
 import jax
+import jax.numpy as jnp
 from omegaconf import OmegaConf
 
 from pmo_evorl.workflow import MOTD3Workflow
@@ -17,6 +18,7 @@ def main() -> None:
     parser.add_argument("--num-envs", type=int, required=True)
     parser.add_argument("--steps", type=int, default=10)
     parser.add_argument("--capacity", type=int, default=100_000)
+    parser.add_argument("--key-eval", action="store_true")
     args = parser.parse_args()
 
     config = OmegaConf.load(args.config)
@@ -34,6 +36,18 @@ def main() -> None:
     workflow = MOTD3Workflow.build_from_config(config, enable_jit=True)
     try:
         state = workflow.init(jax.random.PRNGKey(config.seed))
+        if args.key_eval:
+            state = workflow._update_interpolator(state, jnp.uint32(2))
+            jax.block_until_ready(
+                state.agent_state.extra_state.projected_key_values
+            )
+            started = time.perf_counter()
+            state = workflow._update_interpolator(state, jnp.uint32(3))
+            jax.block_until_ready(
+                state.agent_state.extra_state.projected_key_values
+            )
+            print({"key_evaluation_seconds": time.perf_counter() - started})
+            return
         _, state = workflow._multi_steps(state)  # compile and warm up
         jax.block_until_ready(state.metrics.iterations)
 
