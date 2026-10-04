@@ -3,6 +3,11 @@
 import jax
 import jax.numpy as jnp
 
+from pmo_evorl.interpolator import (
+    WALKER2D_KEY_OBJECTIVES,
+    linear_rbf_project,
+    normalize_objectives,
+)
 from pmo_evorl.networks import PreferenceActor, TwinVectorCritic
 from pmo_evorl.mo_td3 import (
     actor_loss,
@@ -72,6 +77,15 @@ def main() -> None:
             actor_loss(target_q[:, 0], target_preference, projected)
         )
     )
+
+    rbf_query = jnp.array([[0.2, 0.8], [0.7, 0.3]])
+    projected_rbf = jax.jit(linear_rbf_project)(
+        rbf_query, normalize_objectives(WALKER2D_KEY_OBJECTIVES)
+    )
+    scipy_reference = jnp.array(
+        [[0.35938325, 0.90684321], [0.74972307, 0.58036140]]
+    )
+    assert bool(jnp.allclose(projected_rbf, scipy_reference, atol=1e-6))
     print("MO-TD3 network checks passed:", action.shape, vector_q.shape)
 
 

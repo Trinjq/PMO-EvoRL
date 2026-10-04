@@ -29,6 +29,20 @@
 - Actor loss 仅使用 Q1：`-mean(w^TQ1) + 10 * mean(directional_angle(wp,Q1))`。
 - Directional angle 按原码把 cosine 裁剪到 `[0,0.9999]` 后计算角度制 `acos`。
 
+## 三个 Key 与 Interpolator
+
+原始 `train_Walker2d_MO_TD3_HER_Key.py` 先分别在 `w=(0,1)`、`(0.5,0.5)`、`(1,0)` 上训练三个 Key 策略，生成 `interp_objs_walker2d.txt`。官方文件中保存的三个目标向量为：
+
+```text
+[ 497.2413299560547, 2494.5884033203124]
+[1639.5962036132812, 2156.5128173828125]
+[2602.103564453125,  691.5010070800781]
+```
+
+训练主程序启动时对它们做 L2 归一化，然后构建 `RBFInterpolator(kernel="linear")`。[`../pmo_evorl/interpolator.py`](../pmo_evorl/interpolator.py) 用纯 JAX 的4×4增广线性系统复现 SciPy 的 linear RBF 与常数多项式项，避免训练主路径发生 CPU 回调。
+
+源码在训练期间更新 Key 目标后改用 L1 归一化，与启动时的 L2 不一致。迁移版保留可显式选择的归一化函数，在动态更新尚未接入前使用源码启动行为 L2。
+
 ## 与 EvoRL 标准 TD3 的差异
 
 EvoRL 标准 Actor 只输入观测，Critic 输出标量 Q。本项目不改动上游网络工厂，而在项目命名空间内增加偏好条件网络与 MO-TD3 目标函数。
