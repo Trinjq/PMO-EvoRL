@@ -19,7 +19,12 @@ def main() -> None:
     parser.add_argument("--steps", type=int, default=10)
     parser.add_argument("--capacity", type=int, default=100_000)
     parser.add_argument("--key-eval", action="store_true")
+    parser.add_argument("--pareto-eval", action="store_true")
+    parser.add_argument("--eval-episodes", type=int, default=1)
+    parser.add_argument("--pareto-step-size", type=float, default=0.005)
     args = parser.parse_args()
+    if args.key_eval and args.pareto_eval:
+        parser.error("choose only one evaluation mode")
 
     config = OmegaConf.load(args.config)
     if args.num_envs % 10:
@@ -31,8 +36,8 @@ def main() -> None:
     config.checkpoint.enable = False
     if not args.key_eval:
         config.interpolator_eval_episodes = 1
-    config.eval_episodes = 1
-    config.pareto_step_size = 0.5
+    config.eval_episodes = args.eval_episodes
+    config.pareto_step_size = args.pareto_step_size
 
     workflow = MOTD3Workflow.build_from_config(config, enable_jit=True)
     try:
@@ -48,6 +53,21 @@ def main() -> None:
                 state.agent_state.extra_state.projected_key_values
             )
             print({"key_evaluation_seconds": time.perf_counter() - started})
+            return
+        if args.pareto_eval:
+            metrics, state = workflow.evaluate(state)
+            jax.block_until_ready(metrics.hypervolume)
+            started = time.perf_counter()
+            metrics, state = workflow.evaluate(state)
+            jax.block_until_ready(metrics.hypervolume)
+            print(
+                {
+                    "pareto_evaluation_seconds": time.perf_counter() - started,
+                    "preferences": round(1 / args.pareto_step_size) + 1,
+                    "episodes_per_preference": args.eval_episodes,
+                    **metrics.to_local_dict(),
+                }
+            )
             return
         _, state = workflow._multi_steps(state)  # compile and warm up
         jax.block_until_ready(state.metrics.iterations)
