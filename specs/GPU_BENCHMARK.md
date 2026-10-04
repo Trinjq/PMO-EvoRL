@@ -41,7 +41,7 @@
 
 初版评估即使所有 episode 已终止，仍固定执行500步物理模拟。2026-10-04 在同一台共享 RTX 4090 上，以201个偏好、每个偏好1个episode和批量201复测：改为批次内全部episode终止后立即退出，首次评估从1641.71秒降至229.18秒，稳定评估从1609.28秒降至199.05秒，Hypervolume与Sparsity保持一致。但32万步训练后的策略因长回合使在线GPU终评超过37分钟，因此完整 Pareto 评估最终从训练循环移除，改为保存 checkpoint 后使用原生 CPU MuJoCo 离线执行。上述结果只用于工程选型，不作为算法性能证据。
 
-同一个32万步 checkpoint 的原生 CPU MuJoCo 离线评估中，201偏好×1 episode耗时12.33秒，201偏好×3 episode耗时35.56秒。CPU与MJX使用不同数值后端和随机流，轨迹及指标不作逐值等同解释；该路径用于正式 checkpoint 的统一离线评估。
+同一个32万步 checkpoint 在当前原生 CPU MuJoCo 离线协议下，201偏好×1 episode耗时7.06秒，201偏好×3 episode耗时23.06秒。评估器强制校验与MJX相同的模型和任务契约，将GPU checkpoint显式重映射到CPU，并在结果中保存每个episode的独立确定性种子。CPU与MJX使用不同数值后端和随机流，轨迹及指标不作逐值等同解释；所有正式 checkpoint 统一使用该CPU协议评估。
 
 ## 三 GPU 执行边界
 
