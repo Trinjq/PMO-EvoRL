@@ -45,3 +45,15 @@ def linear_rbf_project(
         preference[:, None, :] - key_preferences[None, :, :], axis=-1
     )
     return query_kernel @ coefficients[:count] + coefficients[count]
+
+
+def update_key_objectives(
+    current: jax.Array,
+    candidate: jax.Array,
+    key_preferences: jax.Array = KEY_PREFERENCES,
+) -> tuple[jax.Array, jax.Array]:
+    """Keep scalarized improvements and apply the source's dynamic L1 norm."""
+    old_score = (key_preferences * current).sum(axis=-1)
+    new_score = (key_preferences * candidate).sum(axis=-1)
+    updated = jnp.where((new_score > old_score)[:, None], candidate, current)
+    return updated, normalize_objectives(updated, order=1)

@@ -19,6 +19,7 @@ learning_start_timesteps: 1540
 # Original start_timesteps(10000) is per each of 10 sampling processes.
 her_start_timesteps: 100000
 her_weight_num: 3
+interpolator_eval_episodes: 3
 
 # 10 critic and 1 actor update per 10 raw transitions.
 actor_update_interval: 10

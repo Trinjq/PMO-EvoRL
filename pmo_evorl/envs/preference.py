@@ -41,6 +41,7 @@ class PreferenceConditionedEnv(Env):
         preference = self._sample(preference_keys)
         info = state.info.replace(
             environment_termination=state.info.termination,
+            episode_count=jnp.zeros(self.num_envs, dtype=jnp.uint32),
             preference=preference,
             preference_key=preference_keys,
         )
@@ -61,6 +62,10 @@ class PreferenceConditionedEnv(Env):
         info = next_state.info.replace(
             environment_termination=next_state.info.termination,
             termination=next_state.done,
+            episode_count=(
+                state.info.episode_count
+                + next_state.done.astype(jnp.uint32)
+            ),
             preference=preference,
             preference_key=preference_keys,
         )

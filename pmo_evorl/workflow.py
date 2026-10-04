@@ -1,5 +1,6 @@
 """EvoRL workflow wiring for continuous PD-MORL."""
 
+import jax
 import jax.numpy as jnp
 import optax
 
@@ -9,6 +10,7 @@ from evorl.sample_batch import SampleBatch
 from evorl.types import PyTreeDict
 
 from pmo_evorl.envs import create_mo_walker2d_env
+from pmo_evorl.interpolator import KEY_PREFERENCES, update_key_objectives
 from pmo_evorl.mo_td3 import MOTD3Agent, PreferenceHERReplayBuffer
 from pmo_evorl.networks import PreferenceActor, TwinVectorCritic
 
@@ -55,7 +57,19 @@ class MOTD3Workflow(TD3Workflow):
             action_fn=agent.evaluate_actions,
             max_episode_steps=500,
         )
-        return cls(env, agent, optimizer, evaluator, replay_buffer, config)
+        workflow = cls(env, agent, optimizer, evaluator, replay_buffer, config)
+        key_preferences = jnp.repeat(
+            KEY_PREFERENCES, config.interpolator_eval_episodes, axis=0
+        )
+
+        key_env = create_mo_walker2d_env(
+            len(key_preferences),
+            num_preference_workers=3,
+            autoreset=False,
+        )
+        workflow.key_eval_env = key_env
+        workflow.key_preferences = key_preferences
+        return workflow
 
     def _setup_replaybuffer(self, key):
         dummy_obs = self.env.obs_space.sample(key)
@@ -72,3 +86,51 @@ class MOTD3Workflow(TD3Workflow):
             ),
         )
         return self.replay_buffer.init(dummy)
+
+    def step(self, state):
+        train_metrics, state = super().step(state)
+        completed = state.env_state.info.episode_count.min()
+        previous = state.agent_state.extra_state.interpolator_updates
+
+        def update_interpolator(value):
+            candidate = self._evaluate_key_objectives(value.agent_state)
+            raw, projected = update_key_objectives(
+                value.agent_state.extra_state.key_objectives, candidate
+            )
+            extra_state = value.agent_state.extra_state.replace(
+                key_objectives=raw,
+                projected_key_values=projected,
+                interpolator_updates=completed,
+            )
+            return value.replace(
+                agent_state=value.agent_state.replace(extra_state=extra_state)
+            )
+
+        state = jax.lax.cond(
+            completed > previous, update_interpolator, lambda value: value, state
+        )
+        return train_metrics, state
+
+    def _evaluate_key_objectives(self, agent_state):
+        env_state = self.key_eval_env.reset(jax.random.PRNGKey(0))
+        returns = jnp.zeros((len(self.key_preferences), 2))
+        finished = jnp.zeros(len(self.key_preferences), dtype=bool)
+
+        def evaluate_step(carry, key):
+            env_state, returns, finished = carry
+            obs = env_state.obs.replace(preference=self.key_preferences)
+            actions, _ = self.agent.evaluate_actions(
+                agent_state, SampleBatch(obs=obs), key
+            )
+            next_state = self.key_eval_env.step(env_state, actions)
+            returns += (~finished)[:, None] * next_state.reward
+            finished |= next_state.done.astype(bool)
+            return (next_state, returns, finished), None
+
+        keys = jax.random.split(jax.random.PRNGKey(1), 500)
+        (_, returns, _), _ = jax.lax.scan(
+            evaluate_step, (env_state, returns, finished), keys
+        )
+        return returns.reshape(
+            3, self.config.interpolator_eval_episodes, 2
+        ).mean(axis=1)

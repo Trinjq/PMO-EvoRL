@@ -41,7 +41,9 @@
 
 训练主程序启动时对它们做 L2 归一化，然后构建 `RBFInterpolator(kernel="linear")`。[`../pmo_evorl/interpolator.py`](../pmo_evorl/interpolator.py) 用纯 JAX 的4×4增广线性系统复现 SciPy 的 linear RBF 与常数多项式项，避免训练主路径发生 CPU 回调。
 
-源码在训练期间更新 Key 目标后改用 L1 归一化，与启动时的 L2 不一致。迁移版保留可显式选择的归一化函数，在动态更新尚未接入前使用源码启动行为 L2。
+源码在训练期间更新 Key 目标后改用 L1 归一化，与启动时的 L2 不一致。迁移版启动时使用 L2；当所有偏好采样 worker 都完成新一轮 episode 后，以三个固定 Key preference 做确定性评估。每一行 Key objective 仅在对应 `w^T objective` 改善时替换，随后按源码行为对全部 Key objectives 做 L1 归一化并更新 Interpolator。
+
+迁移版用固定 JAX PRNG key 重复相同的评估初始分布，以对应源码每次用 `eval_ep * 11` 重置随机种子的意图；JAX/MJX 与旧 Gym/MuJoCo 的具体随机轨迹不可能逐位相同。
 
 ## 与 EvoRL 标准 TD3 的差异
 

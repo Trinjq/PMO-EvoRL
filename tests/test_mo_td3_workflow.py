@@ -25,6 +25,7 @@ def main() -> None:
             "random_timesteps": 0,
             "her_start_timesteps": 100,
             "her_weight_num": 3,
+            "interpolator_eval_episodes": 1,
             "seed": 1,
             "rollout_length": 1,
             "actor_update_interval": 10,
@@ -42,12 +43,20 @@ def main() -> None:
     workflow = MOTD3Workflow.build_from_config(config, enable_jit=True)
     state = workflow.init(jax.random.PRNGKey(0))
     assert int(state.replay_buffer_state.buffer_size) == 20
+    state = state.replace(
+        env_state=state.env_state.replace(
+            info=state.env_state.info.replace(
+                episode_count=jnp.ones(10, dtype=jnp.uint32)
+            )
+        )
+    )
 
     metrics, state = workflow.step(state)
     assert int(state.metrics.sampled_timesteps) == 30
     assert int(state.replay_buffer_state.buffer_size) == 30
     assert bool(jnp.isfinite(metrics.critic_loss))
     assert bool(jnp.isfinite(metrics.actor_loss))
+    assert int(state.agent_state.extra_state.interpolator_updates) == 1
     print(
         "MO-TD3 workflow check passed:",
         float(metrics.critic_loss),

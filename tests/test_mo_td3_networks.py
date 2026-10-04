@@ -11,6 +11,7 @@ from pmo_evorl.interpolator import (
     WALKER2D_KEY_OBJECTIVES,
     linear_rbf_project,
     normalize_objectives,
+    update_key_objectives,
 )
 from pmo_evorl.networks import PreferenceActor, TwinVectorCritic
 from pmo_evorl.mo_td3 import (
@@ -92,6 +93,14 @@ def main() -> None:
         [[0.35938325, 0.90684321], [0.74972307, 0.58036140]]
     )
     assert bool(jnp.allclose(projected_rbf, scipy_reference, atol=1e-6))
+
+    candidate_keys = WALKER2D_KEY_OBJECTIVES.at[0, 1].add(1.0).at[1].set(0.0)
+    updated_keys, projected_keys = update_key_objectives(
+        WALKER2D_KEY_OBJECTIVES, candidate_keys
+    )
+    assert float(updated_keys[0, 1]) == float(candidate_keys[0, 1])
+    assert bool(jnp.array_equal(updated_keys[1], WALKER2D_KEY_OBJECTIVES[1]))
+    assert bool(jnp.allclose(projected_keys.sum(axis=-1), 1.0))
 
     class DummySpace:
         def __init__(self, value):

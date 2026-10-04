@@ -171,7 +171,13 @@ class MOTD3Agent(Agent):
         )
         return AgentState(
             params=params,
-            extra_state=normalize_objectives(WALKER2D_KEY_OBJECTIVES),
+            extra_state=PyTreeDict(
+                key_objectives=WALKER2D_KEY_OBJECTIVES,
+                projected_key_values=normalize_objectives(
+                    WALKER2D_KEY_OBJECTIVES
+                ),
+                interpolator_updates=jnp.zeros((), dtype=jnp.uint32),
+            ),
         )
 
     def compute_actions(
@@ -230,7 +236,9 @@ class MOTD3Agent(Agent):
             obs.preference,
             sample_batch.actions,
         )
-        projected = linear_rbf_project(obs.preference, agent_state.extra_state)
+        projected = linear_rbf_project(
+            obs.preference, agent_state.extra_state.projected_key_values
+        )
         loss = vector_critic_loss(current_q, target, projected)
         return PyTreeDict(critic_loss=loss, q_value=current_q.mean())
 
@@ -248,7 +256,9 @@ class MOTD3Agent(Agent):
             obs.preference,
             actions,
         )[:, 0]
-        projected = linear_rbf_project(obs.preference, agent_state.extra_state)
+        projected = linear_rbf_project(
+            obs.preference, agent_state.extra_state.projected_key_values
+        )
         loss = preference_actor_loss(
             q1,
             obs.preference,
