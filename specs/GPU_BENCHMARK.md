@@ -33,4 +33,6 @@
 
 动态 Interpolator 的episode计数在每个 fold 返回主机后检查；500步 Key评估单独 JIT执行，不嵌入逐step训练扫描。这样避免 XLA 把低频评估分支并入100步训练图。检查粒度最多为100个iteration；若实验需要逐episode严格触发，可把 `fold_iters` 调小。
 
+折叠训练把输入 state donation 给 JAX；调用方只使用返回的新 state，使 XLA 可以原位复用大容量 Replay Buffer 的设备内存，避免每个step复制整棵200万容量 buffer PyTree。
+
 这些结果只证明稳态吞吐提高，不证明达到相同 Hypervolume 所需的环境步数不变。正式结论必须比较相同随机种子、相同原始环境步数下的 Pareto Front、Hypervolume和墙钟时间。

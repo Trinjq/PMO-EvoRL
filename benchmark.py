@@ -16,6 +16,7 @@ def main() -> None:
     )
     parser.add_argument("--num-envs", type=int, required=True)
     parser.add_argument("--steps", type=int, default=10)
+    parser.add_argument("--capacity", type=int, default=100_000)
     args = parser.parse_args()
 
     config = OmegaConf.load(args.config)
@@ -24,7 +25,7 @@ def main() -> None:
     config.num_envs = args.num_envs
     config.num_updates_per_iter = args.num_envs // 10
     config.fold_iters = args.steps
-    config.replay_buffer_capacity = 100_000
+    config.replay_buffer_capacity = args.capacity
     config.checkpoint.enable = False
     config.interpolator_eval_episodes = 1
     config.eval_episodes = 1
@@ -51,6 +52,7 @@ def main() -> None:
         print(
             {
                 "num_envs": args.num_envs,
+                "replay_buffer_capacity": args.capacity,
                 "seconds": elapsed,
                 "raw_transitions_per_second": raw_transitions / elapsed,
                 "critic_updates_per_second": critic_updates / elapsed,
