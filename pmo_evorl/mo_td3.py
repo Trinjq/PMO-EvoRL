@@ -9,6 +9,7 @@ import optax
 
 from evorl.agent import Agent, AgentState
 from evorl.algorithms.td3 import TD3NetworkParams
+from evorl.replay_buffers import ReplayBuffer
 from evorl.sample_batch import SampleBatch
 from evorl.types import Action, LossDict, PolicyExtraInfo, PyTreeDict
 
@@ -86,6 +87,51 @@ def preference_actor_loss(
 # Backward-compatible names for the small functional API.
 critic_loss = vector_critic_loss
 actor_loss = preference_actor_loss
+
+
+class PreferenceHERReplayBuffer(ReplayBuffer):
+    """Relabel each transition with source-compatible random preferences."""
+
+    weight_num: int = 3
+    learning_start_timesteps: int = 100_000
+    seed: int = 0
+
+    def add(self, buffer_state, xs, mask=None):
+        if mask is not None:
+            raise ValueError("PreferenceHERReplayBuffer owns its add mask")
+
+        batch_size = xs.obs.preference.shape[0]
+        key = jax.random.fold_in(
+            jax.random.fold_in(
+                jax.random.PRNGKey(self.seed), buffer_state.current_index
+            ),
+            buffer_state.buffer_size,
+        )
+        preferences = jnp.abs(
+            jax.random.normal(key, (batch_size * self.weight_num, 2))
+        )
+        preferences /= preferences.sum(axis=-1, keepdims=True)
+        preferences = jnp.round(preferences, decimals=3)
+
+        relabeled = jtu.tree_map(
+            lambda value: jnp.repeat(value, self.weight_num, axis=0), xs
+        )
+        relabeled = relabeled.replace(
+            obs=relabeled.obs.replace(preference=preferences)
+        )
+        augmented = jtu.tree_map(
+            lambda original, her: jnp.concatenate((original, her), axis=0),
+            xs,
+            relabeled,
+        )
+        use_her = buffer_state.buffer_size > self.learning_start_timesteps
+        add_mask = jnp.concatenate(
+            (
+                jnp.ones(batch_size, dtype=bool),
+                jnp.full(batch_size * self.weight_num, use_her, dtype=bool),
+            )
+        )
+        return super().add(buffer_state, augmented, add_mask)
 
 
 class MOTD3Agent(Agent):
