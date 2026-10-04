@@ -1,6 +1,7 @@
 """Evaluate a saved policy with native CPU MuJoCo."""
 
 import argparse
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -12,6 +13,44 @@ import orbax.checkpoint as ocp
 _XML_PATH = (
     Path(__file__).parent / "pmo_evorl" / "envs" / "assets" / "walker2d_pdmorl.xml"
 )
+SIM_TIMESTEP = 0.002
+FRAME_SKIP = 4
+CONTROL_TIMESTEP = SIM_TIMESTEP * FRAME_SKIP
+EPISODE_LENGTH = 500
+RESET_NOISE_SCALE = 0.005
+
+
+def validate_model(model: mujoco.MjModel) -> None:
+    """Reject CPU models that do not match the MJX Walker2d task contract."""
+    if (model.nq, model.nv, model.nu) != (9, 9, 6):
+        raise ValueError("Walker2d model dimensions must be nq=9, nv=9, nu=6")
+    if not np.isclose(model.opt.timestep, SIM_TIMESTEP):
+        raise ValueError(f"simulation timestep must be {SIM_TIMESTEP}")
+    if model.opt.integrator != mujoco.mjtIntegrator.mjINT_RK4:
+        raise ValueError("Walker2d integrator must be RK4")
+    if not np.allclose(model.actuator_ctrlrange, (-1.0, 1.0)):
+        raise ValueError("all Walker2d actuator ranges must be [-1, 1]")
+
+
+def observation(data: mujoco.MjData) -> np.ndarray:
+    return np.concatenate((data.qpos[1:], np.clip(data.qvel, -10.0, 10.0)))
+
+
+def step_environment(
+    model: mujoco.MjModel, data: mujoco.MjData, action: np.ndarray
+) -> tuple[np.ndarray, bool]:
+    action = np.clip(action, -1.0, 1.0)
+    x_before = data.qpos[0]
+    data.ctrl[:] = action
+    mujoco.mj_step(model, data, nstep=FRAME_SKIP)
+    reward = np.array(
+        [
+            (data.qpos[0] - x_before) / CONTROL_TIMESTEP + 1.0,
+            5.0 - np.square(action).sum(),
+        ]
+    )
+    healthy = 0.8 < data.qpos[1] < 2.0 and -1.0 < data.qpos[2] < 1.0
+    return reward, not healthy
 
 
 def load_actor_layers(checkpoint: Path) -> list[tuple[np.ndarray, np.ndarray]]:
@@ -85,15 +124,22 @@ def sparsity(points: np.ndarray) -> float:
 def reset(model: mujoco.MjModel, seed: int) -> mujoco.MjData:
     rng = np.random.RandomState(seed)
     data = mujoco.MjData(model)
-    data.qpos[:] = model.qpos0 + rng.uniform(-0.005, 0.005, model.nq)
-    data.qvel[:] = rng.uniform(-0.005, 0.005, model.nv)
+    data.qpos[:] = model.qpos0 + rng.uniform(
+        -RESET_NOISE_SCALE, RESET_NOISE_SCALE, model.nq
+    )
+    data.qvel[:] = rng.uniform(
+        -RESET_NOISE_SCALE, RESET_NOISE_SCALE, model.nv
+    )
     mujoco.mj_forward(model, data)
     return data
 
 
 def evaluate(
-    layers: list[tuple[np.ndarray, np.ndarray]], repeats: int, step_size: float
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    layers: list[tuple[np.ndarray, np.ndarray]],
+    repeats: int,
+    step_size: float,
+    seed: int = 0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     preference_count = round(1.0 / step_size) + 1
     preferences = np.stack(
         (
@@ -103,19 +149,21 @@ def evaluate(
         axis=-1,
     ).astype(np.float32)
     model = mujoco.MjModel.from_xml_path(str(_XML_PATH))
-    data = [reset(model, repeat * 11) for repeat in range(repeats) for _ in preferences]
+    validate_model(model)
+    episode_seeds = seed + np.arange(repeats * preference_count)
+    data = [reset(model, int(episode_seed)) for episode_seed in episode_seeds]
     episode_preferences = np.tile(preferences, (repeats, 1))
     returns = np.zeros((len(data), 2), dtype=np.float64)
     lengths = np.zeros(len(data), dtype=np.int32)
     active = np.ones(len(data), dtype=bool)
 
-    for _ in range(500):
+    for _ in range(EPISODE_LENGTH):
         indices = np.flatnonzero(active)
         if not len(indices):
             break
         observations = np.stack(
             [
-                np.concatenate((data[i].qpos[1:], np.clip(data[i].qvel, -10.0, 10.0)))
+                observation(data[i])
                 for i in indices
             ]
         ).astype(np.float32)
@@ -128,17 +176,17 @@ def evaluate(
             1.0,
         )
         for i, action in zip(indices, actions):
-            x_before = data[i].qpos[0]
-            data[i].ctrl[:] = action
-            mujoco.mj_step(model, data[i], nstep=4)
-            returns[i] += (
-                (data[i].qpos[0] - x_before) / 0.008 + 1.0,
-                5.0 - np.square(action).sum(),
-            )
+            reward, done = step_environment(model, data[i], action)
+            returns[i] += reward
             lengths[i] += 1
-            active[i] = 0.8 < data[i].qpos[1] < 2.0 and -1.0 < data[i].qpos[2] < 1.0
+            active[i] = not done
 
-    return preferences, returns.reshape(repeats, preference_count, 2), lengths
+    return (
+        preferences,
+        returns.reshape(repeats, preference_count, 2),
+        lengths,
+        episode_seeds,
+    )
 
 
 def main() -> None:
@@ -147,6 +195,7 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--step-size", type=float, default=0.005)
+    parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
     if args.repeats < 1:
         parser.error("--repeats must be positive")
@@ -164,13 +213,26 @@ def main() -> None:
     layers = load_actor_layers(args.checkpoint)
     restore_seconds = time.perf_counter() - restore_started
     evaluation_started = time.perf_counter()
-    preferences, returns, lengths = evaluate(layers, args.repeats, args.step_size)
+    preferences, returns, lengths, episode_seeds = evaluate(
+        layers, args.repeats, args.step_size, args.seed
+    )
     evaluation_seconds = time.perf_counter() - evaluation_started
     mean_returns = returns.mean(axis=0)
     metrics = {
         "checkpoint": str(args.checkpoint.resolve()),
         "preferences": len(preferences),
         "repeats": args.repeats,
+        "seed": args.seed,
+        "backend": "MuJoCo CPU",
+        "model_sha256": hashlib.sha256(_XML_PATH.read_bytes()).hexdigest(),
+        "observation_size": 17,
+        "action_size": 6,
+        "reward_size": 2,
+        "simulation_timestep": SIM_TIMESTEP,
+        "control_timestep": CONTROL_TIMESTEP,
+        "frame_skip": FRAME_SKIP,
+        "episode_length": EPISODE_LENGTH,
+        "reset_noise_scale": RESET_NOISE_SCALE,
         "hypervolume": hypervolume_2d(mean_returns),
         "sparsity": sparsity(mean_returns),
         "episode_length_mean": float(lengths.mean()),
@@ -185,6 +247,7 @@ def main() -> None:
         preferences=preferences,
         returns_per_repeat=returns,
         episode_lengths=lengths.reshape(args.repeats, len(preferences)),
+        episode_seeds=episode_seeds.reshape(args.repeats, len(preferences)),
     )
     (args.output_dir / "metrics.json").write_text(
         json.dumps(metrics, indent=2), encoding="utf-8"

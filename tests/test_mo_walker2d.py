@@ -3,7 +3,11 @@
 import jax
 import jax.numpy as jnp
 import mujoco
+import numpy as np
+from mujoco import mjx
+from mujoco_playground._src import mjx_env
 
+from evaluate_cpu import observation, step_environment, validate_model
 from pmo_evorl.envs import MOWalker2d, create_mo_walker2d_env
 
 
@@ -13,6 +17,42 @@ def main() -> None:
     assert env.mj_model.opt.integrator == mujoco.mjtIntegrator.mjINT_RK4
     assert env.sim_dt == 0.002
     assert env.dt == 0.008
+
+    cpu_model = mujoco.MjModel.from_xml_path(env.xml_path)
+    validate_model(cpu_model)
+    qpos = np.asarray(cpu_model.qpos0) + np.linspace(-0.001, 0.001, cpu_model.nq)
+    qvel = np.linspace(-0.002, 0.002, cpu_model.nv)
+    comparison_action = np.linspace(-0.5, 0.5, cpu_model.nu)
+    cpu_data = mujoco.MjData(cpu_model)
+    cpu_data.qpos[:] = qpos
+    cpu_data.qvel[:] = qvel
+    mujoco.mj_forward(cpu_model, cpu_data)
+    cpu_reward, cpu_done = step_environment(
+        cpu_model, cpu_data, comparison_action
+    )
+
+    mjx_data = mjx_env.make_data(
+        env.mj_model,
+        qpos=jnp.asarray(qpos),
+        qvel=jnp.asarray(qvel),
+        impl=env.mjx_model.impl.value,
+    )
+    mjx_data = mjx.forward(env.mjx_model, mjx_data)
+    zero = jnp.zeros(())
+    comparison_state = mjx_env.State(
+        mjx_data,
+        env._get_obs(mjx_data),
+        jnp.zeros(2),
+        zero,
+        {"reward_speed": zero, "reward_energy": zero},
+        {"rng": jax.random.PRNGKey(0)},
+    )
+    comparison_next = jax.jit(env.step)(
+        comparison_state, jnp.asarray(comparison_action)
+    )
+    assert np.allclose(observation(cpu_data), comparison_next.obs, atol=1e-2)
+    assert np.allclose(cpu_reward, comparison_next.reward, atol=1e-3)
+    assert cpu_done == bool(comparison_next.done)
     reset = jax.jit(env.reset)
     step = jax.jit(env.step)
     state = reset(jax.random.PRNGKey(0))
