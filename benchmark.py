@@ -29,7 +29,8 @@ def main() -> None:
     config.fold_iters = args.steps
     config.replay_buffer_capacity = args.capacity
     config.checkpoint.enable = False
-    config.interpolator_eval_episodes = 1
+    if not args.key_eval:
+        config.interpolator_eval_episodes = 1
     config.eval_episodes = 1
     config.pareto_step_size = 0.5
 
