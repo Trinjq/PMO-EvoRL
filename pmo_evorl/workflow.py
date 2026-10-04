@@ -1,15 +1,15 @@
 """EvoRL workflow wiring for continuous PD-MORL."""
 
+import time
+
+import chex
 import jax
 import jax.numpy as jnp
 import optax
-import chex
-
 from evorl.algorithms.offpolicy_utils import skip_replay_buffer_state
 from evorl.algorithms.td3 import TD3Workflow
 from evorl.evaluators import Evaluator
 from evorl.metrics import MetricBase
-from evorl.recorders import add_prefix
 from evorl.sample_batch import SampleBatch
 from evorl.types import PyTreeDict
 
@@ -34,9 +34,7 @@ class MOTD3Workflow(TD3Workflow):
 
     @classmethod
     def _build_from_config(cls, config):
-        env = create_mo_walker2d_env(
-            config.num_envs, config.num_preference_workers
-        )
+        env = create_mo_walker2d_env(config.num_envs, config.num_preference_workers)
         agent = MOTD3Agent(
             actor_network=PreferenceActor(action_size=env.action_space.shape[0]),
             critic_network=TwinVectorCritic(reward_size=2),
@@ -153,9 +151,9 @@ class MOTD3Workflow(TD3Workflow):
             self.key_preferences,
             jax.random.PRNGKey(0),
         )
-        return returns.reshape(
-            3, self.config.interpolator_eval_episodes, 2
-        ).mean(axis=1)
+        return returns.reshape(3, self.config.interpolator_eval_episodes, 2).mean(
+            axis=1
+        )
 
     def _evaluate_preferences(self, agent_state, env, preferences, reset_key):
         env_state = env.reset(reset_key)
@@ -206,18 +204,19 @@ class MOTD3Workflow(TD3Workflow):
         )
 
     def learn(self, state):
-        """Train until the raw-transition budget and always finalize once."""
-        next_eval = (
-            state.metrics.iterations.tolist() // self.config.eval_interval + 1
-        ) * self.config.eval_interval
+        """Train to the raw-transition budget and save before offline evaluation."""
+        learn_started = time.perf_counter()
 
         while state.metrics.sampled_timesteps.tolist() < self.config.total_timesteps:
+            fold_started = time.perf_counter()
             train_metrics, state = self._multi_steps(state)
+            train_seconds = time.perf_counter() - fold_started
+            interpolator_started = time.perf_counter()
             state = self._maybe_update_interpolator(state)
+            interpolator_seconds = time.perf_counter() - interpolator_started
             iterations = state.metrics.iterations.tolist()
             is_final = (
-                state.metrics.sampled_timesteps.tolist()
-                >= self.config.total_timesteps
+                state.metrics.sampled_timesteps.tolist() >= self.config.total_timesteps
             )
             self.recorder.write(train_metrics.to_local_dict(), iterations)
             self.recorder.write(state.metrics.to_local_dict(), iterations)
@@ -228,29 +227,31 @@ class MOTD3Workflow(TD3Workflow):
                     "critic_loss": train_metrics.critic_loss.tolist(),
                     "actor_loss": train_metrics.actor_loss.tolist(),
                     "interpolator_updates": state.agent_state.extra_state.interpolator_updates.tolist(),
+                    "train_seconds": train_seconds,
+                    "interpolator_seconds": interpolator_seconds,
                 },
                 flush=True,
             )
 
-            if iterations >= next_eval or is_final:
-                eval_metrics, state = self.evaluate(state)
-                self.recorder.write(
-                    add_prefix(eval_metrics.to_local_dict(), "eval"), iterations
-                )
-                print(
-                    {"iterations": iterations, **eval_metrics.to_local_dict()},
-                    flush=True,
-                )
-                while next_eval <= iterations:
-                    next_eval += self.config.eval_interval
-
             saved_state = state
             if not self.config.save_replay_buffer:
                 saved_state = skip_replay_buffer_state(saved_state)
-            self.checkpoint_manager.save(
-                iterations, saved_state, force=is_final
+            checkpoint_started = time.perf_counter()
+            self.checkpoint_manager.save(iterations, saved_state, force=is_final)
+            if is_final:
+                self.checkpoint_manager.wait_until_finished()
+            print(
+                {
+                    "iterations": iterations,
+                    "checkpoint_seconds": time.perf_counter() - checkpoint_started,
+                },
+                flush=True,
             )
 
+        print(
+            {"training_total_seconds": time.perf_counter() - learn_started},
+            flush=True,
+        )
         return state
 
     @classmethod

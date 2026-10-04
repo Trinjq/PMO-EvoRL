@@ -23,10 +23,16 @@ python train.py --num-envs 320 --total-timesteps 320000 \
 python run_multi_gpu.py --devices 0,1,2 --num-envs-per-gpu 320 \
   --total-timesteps 10000000 --output-root outputs/three_gpu
 
+# Evaluate a completed checkpoint with native CPU MuJoCo.
+python evaluate_cpu.py \
+  --checkpoint outputs/three_gpu/seed_1/checkpoints/STEP \
+  --output-dir outputs/three_gpu/seed_1/final_eval
+
 # Compare steady-state training throughput at the same update ratios.
 python benchmark.py --num-envs 10 --steps 10
 python benchmark.py --num-envs 320 --steps 10
 ```
 
 On a shared server, set `CUDA_VISIBLE_DEVICES` to the assigned GPU before running.
+Training saves its final checkpoint before evaluation; full Pareto evaluation is an explicit offline step.
 See [`specs/GPU_BENCHMARK.md`](specs/GPU_BENCHMARK.md) for the provisional results and limitations.

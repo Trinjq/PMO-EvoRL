@@ -1,20 +1,19 @@
 """Run the GPU-native PD-MORL MO-TD3 workflow."""
 
 import argparse
+import time
 from pathlib import Path
 
 import jax
+from evorl.recorders import LogRecorder
 from omegaconf import OmegaConf
 
-from evorl.recorders import LogRecorder
 from pmo_evorl.workflow import MOTD3Workflow
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--config", default="configs/mo_td3_walker2d.yaml"
-    )
+    parser.add_argument("--config", default="configs/mo_td3_walker2d.yaml")
     parser.add_argument("--num-envs", type=int)
     parser.add_argument("--total-timesteps", type=int)
     parser.add_argument("--output-dir")
@@ -51,12 +50,17 @@ def main() -> None:
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    build_started = time.perf_counter()
     workflow = MOTD3Workflow.build_from_config(config, enable_jit=True)
+    print({"build_seconds": time.perf_counter() - build_started}, flush=True)
     workflow.add_recorders(
         [LogRecorder(str(output_dir / "training.log"), console=True)]
     )
     try:
+        init_started = time.perf_counter()
         state = workflow.init(jax.random.PRNGKey(config.seed))
+        jax.block_until_ready(state.metrics.sampled_timesteps)
+        print({"init_seconds": time.perf_counter() - init_started}, flush=True)
         workflow.learn(state)
     finally:
         workflow.close()
