@@ -114,29 +114,28 @@ class MOTD3Workflow(TD3Workflow):
         )
         return self.replay_buffer.init(dummy)
 
-    def step(self, state):
-        train_metrics, state = super().step(state)
-        completed = state.env_state.info.episode_count.min()
-        previous = state.agent_state.extra_state.interpolator_updates
-
-        def update_interpolator(value):
-            candidate = self._evaluate_key_objectives(value.agent_state)
-            raw, projected = update_key_objectives(
-                value.agent_state.extra_state.key_objectives, candidate
-            )
-            extra_state = value.agent_state.extra_state.replace(
-                key_objectives=raw,
-                projected_key_values=projected,
-                interpolator_updates=completed,
-            )
-            return value.replace(
-                agent_state=value.agent_state.replace(extra_state=extra_state)
-            )
-
-        state = jax.lax.cond(
-            completed > previous, update_interpolator, lambda value: value, state
+    def _update_interpolator(self, state, completed):
+        candidate = self._evaluate_key_objectives(state.agent_state)
+        raw, projected = update_key_objectives(
+            state.agent_state.extra_state.key_objectives, candidate
         )
-        return train_metrics, state
+        extra_state = state.agent_state.extra_state.replace(
+            key_objectives=raw,
+            projected_key_values=projected,
+            interpolator_updates=completed,
+        )
+        return state.replace(
+            agent_state=state.agent_state.replace(extra_state=extra_state)
+        )
+
+    def _maybe_update_interpolator(self, state):
+        completed = state.env_state.info.episode_count.min().tolist()
+        previous = state.agent_state.extra_state.interpolator_updates.tolist()
+        if completed > previous:
+            state = self._update_interpolator(
+                state, jnp.asarray(completed, dtype=jnp.uint32)
+            )
+        return state
 
     def _evaluate_key_objectives(self, agent_state):
         returns = self._evaluate_preferences(
@@ -194,6 +193,7 @@ class MOTD3Workflow(TD3Workflow):
 
         while state.metrics.sampled_timesteps.tolist() < self.config.total_timesteps:
             train_metrics, state = self._multi_steps(state)
+            state = self._maybe_update_interpolator(state)
             iterations = state.metrics.iterations.tolist()
             is_final = (
                 state.metrics.sampled_timesteps.tolist()
@@ -218,3 +218,10 @@ class MOTD3Workflow(TD3Workflow):
             )
 
         return state
+
+    @classmethod
+    def enable_jit(cls):
+        super().enable_jit()
+        cls._update_interpolator = jax.jit(
+            cls._update_interpolator, static_argnums=(0,)
+        )

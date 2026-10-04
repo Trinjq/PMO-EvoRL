@@ -57,6 +57,8 @@ def main() -> None:
     assert int(state.replay_buffer_state.buffer_size) == 30
     assert bool(jnp.isfinite(metrics.critic_loss))
     assert bool(jnp.isfinite(metrics.actor_loss))
+    assert int(state.agent_state.extra_state.interpolator_updates) == 1
+    state = workflow._maybe_update_interpolator(state)
     assert int(state.agent_state.extra_state.interpolator_updates) == 2
     eval_metrics, state = workflow.evaluate(state)
     assert bool(jnp.isfinite(eval_metrics.hypervolume))

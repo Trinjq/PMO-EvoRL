@@ -31,4 +31,6 @@
 
 训练入口对大于10的并行环境数把 `fold_iters` 上限设为100，使320环境每个外层 fold 最多跨越32,000条 transition。最终停止条件依据实际累计的原始 transition，而不是 EvoRL 上游混用的 fold计数；最后一折会完成评估并强制保存 checkpoint。
 
+动态 Interpolator 的episode计数在每个 fold 返回主机后检查；500步 Key评估单独 JIT执行，不嵌入逐step训练扫描。这样避免 XLA 把低频评估分支并入100步训练图。检查粒度最多为100个iteration；若实验需要逐episode严格触发，可把 `fold_iters` 调小。
+
 这些结果只证明稳态吞吐提高，不证明达到相同 Hypervolume 所需的环境步数不变。正式结论必须比较相同随机种子、相同原始环境步数下的 Pareto Front、Hypervolume和墙钟时间。
