@@ -1,2 +1,21 @@
 # PMO-EvoRL
-Preference and MORL in EvoRL
+
+GPU-native PD-MORL MO-TD3-HER on EvoRL, JAX, and MuJoCo MJX.
+
+```bash
+conda activate pmo-evorl
+export PYTHONPATH=.
+export XLA_PYTHON_CLIENT_PREALLOCATE=false
+
+# Source-ratio baseline: 10 parallel environments.
+python train.py
+
+# Scale sampling while preserving 1 Critic and 0.1 Actor update per transition.
+python train.py --num-envs 80
+
+# Compare steady-state training throughput at the same update ratios.
+python benchmark.py --num-envs 10 --steps 10
+python benchmark.py --num-envs 80 --steps 10
+```
+
+On a shared server, set `CUDA_VISIBLE_DEVICES` to the assigned GPU before running.

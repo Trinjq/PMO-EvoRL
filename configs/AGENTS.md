@@ -6,3 +6,4 @@
 - 调整并行环境数时，必须保持并记录每条原始 transition 对应的 Critic 与 Actor 更新次数。
 - `learning_start_timesteps` 与 `her_start_timesteps` 含义不同，禁止合并。
 - 正确性基线配置先保持源码训练比例；加速配置必须另建并通过等环境步数实验验证。
+- 连续版基线每10条原始 transition 执行10次 Critic和1次 Actor更新；扩大 `num_envs` 时令 `num_updates_per_iter = num_envs / 10`。
