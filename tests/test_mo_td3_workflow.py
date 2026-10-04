@@ -47,7 +47,7 @@ def main() -> None:
     state = state.replace(
         env_state=state.env_state.replace(
             info=state.env_state.info.replace(
-                episode_count=jnp.ones(10, dtype=jnp.uint32)
+                episode_count=jnp.full(10, 2, dtype=jnp.uint32)
             )
         )
     )
@@ -57,7 +57,7 @@ def main() -> None:
     assert int(state.replay_buffer_state.buffer_size) == 30
     assert bool(jnp.isfinite(metrics.critic_loss))
     assert bool(jnp.isfinite(metrics.actor_loss))
-    assert int(state.agent_state.extra_state.interpolator_updates) == 1
+    assert int(state.agent_state.extra_state.interpolator_updates) == 2
     eval_metrics, state = workflow.evaluate(state)
     assert bool(jnp.isfinite(eval_metrics.hypervolume))
     assert bool(jnp.isfinite(eval_metrics.sparsity))

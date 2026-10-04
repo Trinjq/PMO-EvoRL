@@ -176,7 +176,7 @@ class MOTD3Agent(Agent):
                 projected_key_values=normalize_objectives(
                     WALKER2D_KEY_OBJECTIVES
                 ),
-                interpolator_updates=jnp.zeros((), dtype=jnp.uint32),
+                interpolator_updates=jnp.ones((), dtype=jnp.uint32),
             ),
         )
 
