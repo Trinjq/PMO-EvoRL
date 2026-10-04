@@ -13,6 +13,9 @@ def main() -> None:
         total_timesteps=1000,
         interpolator_eval_episodes=1,
         eval_episodes=None,
+        fold_iters=1,
+        pareto_step_size=0.5,
+        pareto_eval_batch_size=3,
     )
     command = train_command(args, 3, Path("outputs/three_gpu/seed_3"))
     assert command[1] == "train.py"
@@ -21,6 +24,8 @@ def main() -> None:
     assert "--total-timesteps" in command
     assert "--interpolator-eval-episodes" in command
     assert "--eval-episodes" not in command
+    assert command[command.index("--fold-iters") + 1] == "1"
+    assert command[command.index("--pareto-step-size") + 1] == "0.5"
     print("multi-GPU launcher check passed")
 
 

@@ -24,6 +24,9 @@ def train_command(args, seed: int, output_dir: Path) -> list[str]:
         "total_timesteps",
         "interpolator_eval_episodes",
         "eval_episodes",
+        "fold_iters",
+        "pareto_step_size",
+        "pareto_eval_batch_size",
     ):
         value = getattr(args, name)
         if value is not None:
@@ -41,6 +44,9 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--interpolator-eval-episodes", type=int)
     parser.add_argument("--eval-episodes", type=int)
+    parser.add_argument("--fold-iters", type=int)
+    parser.add_argument("--pareto-step-size", type=float)
+    parser.add_argument("--pareto-eval-batch-size", type=int)
     args = parser.parse_args()
 
     devices = [item.strip() for item in args.devices.split(",") if item.strip()]

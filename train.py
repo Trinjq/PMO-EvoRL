@@ -21,6 +21,9 @@ def main() -> None:
     parser.add_argument("--interpolator-eval-episodes", type=int)
     parser.add_argument("--eval-episodes", type=int)
     parser.add_argument("--seed", type=int)
+    parser.add_argument("--fold-iters", type=int)
+    parser.add_argument("--pareto-step-size", type=float)
+    parser.add_argument("--pareto-eval-batch-size", type=int)
     args = parser.parse_args()
     config = OmegaConf.load(args.config)
     if args.num_envs is not None:
@@ -39,6 +42,12 @@ def main() -> None:
         config.eval_episodes = args.eval_episodes
     if args.seed is not None:
         config.seed = args.seed
+    if args.fold_iters is not None:
+        config.fold_iters = args.fold_iters
+    if args.pareto_step_size is not None:
+        config.pareto_step_size = args.pareto_step_size
+    if args.pareto_eval_batch_size is not None:
+        config.pareto_eval_batch_size = args.pareto_eval_batch_size
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
