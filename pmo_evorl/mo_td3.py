@@ -124,11 +124,14 @@ class PreferenceHERReplayBuffer(ReplayBuffer):
             xs,
             relabeled,
         )
-        use_her = buffer_state.buffer_size > self.learning_start_timesteps
+        use_her = (
+            buffer_state.buffer_size + jnp.arange(1, batch_size + 1)
+            > self.learning_start_timesteps
+        )
         add_mask = jnp.concatenate(
             (
                 jnp.ones(batch_size, dtype=bool),
-                jnp.full(batch_size * self.weight_num, use_her, dtype=bool),
+                jnp.repeat(use_her, self.weight_num),
             )
         )
         return super().add(buffer_state, augmented, add_mask)
