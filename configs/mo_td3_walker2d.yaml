@@ -32,7 +32,7 @@ fold_iters: 1000
 eval_interval: 50000
 eval_episodes: 3
 pareto_step_size: 0.005
-pareto_eval_batch_size: 32
+pareto_eval_batch_size: 3
 seed: 1
 
 output_dir: outputs/mo_td3_walker2d
