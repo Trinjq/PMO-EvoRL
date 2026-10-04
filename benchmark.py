@@ -8,6 +8,7 @@ import jax.numpy as jnp
 from omegaconf import OmegaConf
 
 from pmo_evorl.workflow import MOTD3Workflow
+from train import configure_update_schedule
 
 
 def main() -> None:
@@ -23,6 +24,8 @@ def main() -> None:
     parser.add_argument("--eval-episodes", type=int, default=1)
     parser.add_argument("--pareto-step-size", type=float, default=0.005)
     parser.add_argument("--pareto-eval-batch-size", type=int)
+    parser.add_argument("--critic-updates-per-transition", type=float)
+    parser.add_argument("--actor-updates-per-transition", type=float)
     args = parser.parse_args()
     if args.key_eval and args.pareto_eval:
         parser.error("choose only one evaluation mode")
@@ -31,7 +34,11 @@ def main() -> None:
     if args.num_envs % 10:
         parser.error("--num-envs must be divisible by 10")
     config.num_envs = args.num_envs
-    config.num_updates_per_iter = args.num_envs // 10
+    if args.critic_updates_per_transition is not None:
+        config.critic_updates_per_transition = args.critic_updates_per_transition
+    if args.actor_updates_per_transition is not None:
+        config.actor_updates_per_transition = args.actor_updates_per_transition
+    configure_update_schedule(config)
     config.fold_iters = args.steps
     config.replay_buffer_capacity = args.capacity
     config.checkpoint.enable = False

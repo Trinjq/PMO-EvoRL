@@ -26,6 +26,7 @@ def main() -> None:
             "her_start_timesteps": 100,
             "her_weight_num": 3,
             "interpolator_eval_episodes": 1,
+            "key_update_interval": 5,
             "seed": 1,
             "rollout_length": 1,
             "actor_update_interval": 10,
@@ -60,7 +61,16 @@ def main() -> None:
     assert bool(jnp.isfinite(metrics.actor_loss))
     assert int(state.agent_state.extra_state.interpolator_updates) == 1
     state = workflow._maybe_update_interpolator(state)
-    assert int(state.agent_state.extra_state.interpolator_updates) == 2
+    assert int(state.agent_state.extra_state.interpolator_updates) == 1
+    state = state.replace(
+        env_state=state.env_state.replace(
+            info=state.env_state.info.replace(
+                episode_count=jnp.full(10, 6, dtype=jnp.uint32)
+            )
+        )
+    )
+    state = workflow._maybe_update_interpolator(state)
+    assert int(state.agent_state.extra_state.interpolator_updates) == 6
     eval_metrics, state = workflow.evaluate(state)
     assert bool(jnp.isfinite(eval_metrics.hypervolume))
     assert bool(jnp.isfinite(eval_metrics.sparsity))

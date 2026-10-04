@@ -20,6 +20,7 @@
 | Walker2d 环境契约 | [`specs/MO_WALKER2D_CONTRACT.md`](specs/MO_WALKER2D_CONTRACT.md) | 原始 PD-MORL 环境语义与当前复现边界 |
 | MO-TD3 网络契约 | [`specs/MO_TD3_NETWORK_CONTRACT.md`](specs/MO_TD3_NETWORK_CONTRACT.md) | 偏好条件 Actor 与 Twin Vector Critic 的输入输出 |
 | GPU 吞吐基准 | [`specs/GPU_BENCHMARK.md`](specs/GPU_BENCHMARK.md) | 等更新比例下的并行规模、吞吐与适用边界 |
+| GPU 加速计划 | [`specs/GPU_ACCELERATION_PLAN.md`](specs/GPU_ACCELERATION_PLAN.md) | 速度优先版本的阶段、配置、晋级与验收规则 |
 | 项目 Python 包 | [`pmo_evorl/AGENTS.md`](pmo_evorl/AGENTS.md) | PD-MORL 扩展的代码边界与验证规则 |
 | 环境模块 | [`pmo_evorl/envs/AGENTS.md`](pmo_evorl/envs/AGENTS.md) | 多目标环境的契约和验证方法 |
 | 测试 | [`tests/AGENTS.md`](tests/AGENTS.md) | 最小可运行回归检查 |
@@ -42,5 +43,6 @@
 - 指导文件只记录稳定约束、设计决策和可执行验证方式，不充当每日进度日志。
 - 改变目录职责、公共接口或关键数据流时，必须同步更新对应 `AGENTS.md`。
 - 新增全局约束时，写入 `specs/` 中合适的规范，并从本文件建立索引。
+- 修改训练、并行、Interpolator、评估或性能相关代码前，必须先阅读 [`specs/GPU_ACCELERATION_PLAN.md`](specs/GPU_ACCELERATION_PLAN.md)。
 - 删除或移动规范、模块时，必须清理所有失效引用。
 - 代码、配置、测试和文档以本仓库为唯一编辑源；实验室服务器用于运行与保存大型输出。

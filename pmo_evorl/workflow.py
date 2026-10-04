@@ -138,7 +138,7 @@ class MOTD3Workflow(TD3Workflow):
     def _maybe_update_interpolator(self, state):
         completed = state.env_state.info.episode_count.min().tolist()
         previous = state.agent_state.extra_state.interpolator_updates.tolist()
-        if completed > previous:
+        if completed >= previous + self.config.key_update_interval:
             state = self._update_interpolator(
                 state, jnp.asarray(completed, dtype=jnp.uint32)
             )

@@ -12,6 +12,9 @@ def main() -> None:
         num_envs_per_gpu=320,
         total_timesteps=1000,
         interpolator_eval_episodes=1,
+        key_update_interval=5,
+        critic_updates_per_transition=0.5,
+        actor_updates_per_transition=0.05,
         eval_episodes=None,
         fold_iters=1,
         pareto_step_size=0.5,
@@ -23,6 +26,9 @@ def main() -> None:
     assert command[command.index("--seed") + 1] == "3"
     assert "--total-timesteps" in command
     assert "--interpolator-eval-episodes" in command
+    assert command[command.index("--key-update-interval") + 1] == "5"
+    assert command[command.index("--critic-updates-per-transition") + 1] == "0.5"
+    assert command[command.index("--actor-updates-per-transition") + 1] == "0.05"
     assert "--eval-episodes" not in command
     assert command[command.index("--fold-iters") + 1] == "1"
     assert command[command.index("--pareto-step-size") + 1] == "0.5"

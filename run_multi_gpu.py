@@ -23,6 +23,9 @@ def train_command(args, seed: int, output_dir: Path) -> list[str]:
     for name in (
         "total_timesteps",
         "interpolator_eval_episodes",
+        "key_update_interval",
+        "critic_updates_per_transition",
+        "actor_updates_per_transition",
         "eval_episodes",
         "fold_iters",
         "pareto_step_size",
@@ -43,6 +46,9 @@ def main() -> None:
     parser.add_argument("--output-root", default="outputs/three_gpu")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--interpolator-eval-episodes", type=int)
+    parser.add_argument("--key-update-interval", type=int)
+    parser.add_argument("--critic-updates-per-transition", type=float)
+    parser.add_argument("--actor-updates-per-transition", type=float)
     parser.add_argument("--eval-episodes", type=int)
     parser.add_argument("--fold-iters", type=int)
     parser.add_argument("--pareto-step-size", type=float)
