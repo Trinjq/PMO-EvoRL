@@ -201,11 +201,25 @@ class MOTD3Workflow(TD3Workflow):
             )
             self.recorder.write(train_metrics.to_local_dict(), iterations)
             self.recorder.write(state.metrics.to_local_dict(), iterations)
+            print(
+                {
+                    "iterations": iterations,
+                    "raw_transitions": state.metrics.sampled_timesteps.tolist(),
+                    "critic_loss": train_metrics.critic_loss.tolist(),
+                    "actor_loss": train_metrics.actor_loss.tolist(),
+                    "interpolator_updates": state.agent_state.extra_state.interpolator_updates.tolist(),
+                },
+                flush=True,
+            )
 
             if iterations >= next_eval or is_final:
                 eval_metrics, state = self.evaluate(state)
                 self.recorder.write(
                     add_prefix(eval_metrics.to_local_dict(), "eval"), iterations
+                )
+                print(
+                    {"iterations": iterations, **eval_metrics.to_local_dict()},
+                    flush=True,
                 )
                 while next_eval <= iterations:
                     next_eval += self.config.eval_interval

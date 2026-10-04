@@ -15,6 +15,7 @@ python train.py --num-envs 320
 
 # Short numerical-stability run with a separate artifact directory.
 python train.py --num-envs 320 --total-timesteps 320000 \
+  --interpolator-eval-episodes 1 --eval-episodes 1 \
   --output-dir outputs/smoke_320
 
 # Compare steady-state training throughput at the same update ratios.

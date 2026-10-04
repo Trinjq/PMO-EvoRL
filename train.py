@@ -18,6 +18,8 @@ def main() -> None:
     parser.add_argument("--num-envs", type=int)
     parser.add_argument("--total-timesteps", type=int)
     parser.add_argument("--output-dir")
+    parser.add_argument("--interpolator-eval-episodes", type=int)
+    parser.add_argument("--eval-episodes", type=int)
     args = parser.parse_args()
     config = OmegaConf.load(args.config)
     if args.num_envs is not None:
@@ -30,6 +32,10 @@ def main() -> None:
         config.total_timesteps = args.total_timesteps
     if args.output_dir is not None:
         config.output_dir = args.output_dir
+    if args.interpolator_eval_episodes is not None:
+        config.interpolator_eval_episodes = args.interpolator_eval_episodes
+    if args.eval_episodes is not None:
+        config.eval_episodes = args.eval_episodes
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
