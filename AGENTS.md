@@ -19,6 +19,7 @@
 | 全局开发规则 | [`specs/GLOBAL_RULES.md`](specs/GLOBAL_RULES.md) | 架构、实现、实验、验证与协作规则 |
 | Walker2d 环境契约 | [`specs/MO_WALKER2D_CONTRACT.md`](specs/MO_WALKER2D_CONTRACT.md) | 原始 PD-MORL 环境语义与当前复现边界 |
 | MO-TD3 网络契约 | [`specs/MO_TD3_NETWORK_CONTRACT.md`](specs/MO_TD3_NETWORK_CONTRACT.md) | 偏好条件 Actor 与 Twin Vector Critic 的输入输出 |
+| GPU 吞吐基准 | [`specs/GPU_BENCHMARK.md`](specs/GPU_BENCHMARK.md) | 等更新比例下的并行规模、吞吐与适用边界 |
 | 项目 Python 包 | [`pmo_evorl/AGENTS.md`](pmo_evorl/AGENTS.md) | PD-MORL 扩展的代码边界与验证规则 |
 | 环境模块 | [`pmo_evorl/envs/AGENTS.md`](pmo_evorl/envs/AGENTS.md) | 多目标环境的契约和验证方法 |
 | 测试 | [`tests/AGENTS.md`](tests/AGENTS.md) | 最小可运行回归检查 |
