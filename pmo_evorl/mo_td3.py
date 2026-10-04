@@ -1,8 +1,22 @@
-"""Core vector target and losses from the original MO-TD3 implementation."""
+"""MO-TD3 agent, vector target, and losses."""
 
+import chex
+from flax import linen as nn
 import jax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 import optax
+
+from evorl.agent import Agent, AgentState
+from evorl.algorithms.td3 import TD3NetworkParams
+from evorl.sample_batch import SampleBatch
+from evorl.types import Action, LossDict, PolicyExtraInfo, PyTreeDict
+
+from pmo_evorl.interpolator import (
+    WALKER2D_KEY_OBJECTIVES,
+    linear_rbf_project,
+    normalize_objectives,
+)
 
 
 def select_target_vector_q(
@@ -44,7 +58,7 @@ def directional_angle(
     return jnp.rad2deg(jnp.arccos(jnp.clip(cosine, 0.0, 0.9999)))
 
 
-def critic_loss(
+def vector_critic_loss(
     current_vector_q: jax.Array,
     target_vector_q: jax.Array,
     projected_preference: jax.Array,
@@ -57,7 +71,7 @@ def critic_loss(
     return angle.sum(axis=1).mean() + huber.sum(axis=1).mean()
 
 
-def actor_loss(
+def preference_actor_loss(
     q1_vector: jax.Array,
     preference: jax.Array,
     projected_preference: jax.Array,
@@ -67,3 +81,129 @@ def actor_loss(
     scalar_q = jnp.einsum("bo,bo->b", preference, q1_vector)
     angle = directional_angle(projected_preference, q1_vector)
     return -scalar_q.mean() + angle_coefficient * angle.mean()
+
+
+# Backward-compatible names for the small functional API.
+critic_loss = vector_critic_loss
+actor_loss = preference_actor_loss
+
+
+class MOTD3Agent(Agent):
+    """EvoRL-compatible, preference-conditioned vector MO-TD3 agent."""
+
+    critic_network: nn.Module
+    actor_network: nn.Module
+    discount: float = 0.995
+    exploration_epsilon: float = 0.1
+    policy_noise: float = 0.2
+    clip_policy_noise: float = 0.5
+    angle_coefficient: float = 10.0
+
+    def init(self, obs_space, action_space, key: chex.PRNGKey) -> AgentState:
+        sample_key, critic_key, actor_key = jax.random.split(key, 3)
+        dummy_obs = jtu.tree_map(
+            lambda value: value[None], obs_space.sample(sample_key)
+        )
+        dummy_action = action_space.sample(sample_key)[None]
+        critic_params = self.critic_network.init(
+            critic_key,
+            dummy_obs.state,
+            dummy_obs.preference,
+            dummy_action,
+        )
+        actor_params = self.actor_network.init(
+            actor_key, dummy_obs.state, dummy_obs.preference
+        )
+        params = TD3NetworkParams(
+            critic_params=critic_params,
+            actor_params=actor_params,
+            target_critic_params=critic_params,
+            target_actor_params=actor_params,
+        )
+        return AgentState(
+            params=params,
+            extra_state=normalize_objectives(WALKER2D_KEY_OBJECTIVES),
+        )
+
+    def compute_actions(
+        self, agent_state: AgentState, sample_batch: SampleBatch, key: chex.PRNGKey
+    ) -> tuple[Action, PolicyExtraInfo]:
+        obs = sample_batch.obs
+        actions = self.actor_network.apply(
+            agent_state.params.actor_params, obs.state, obs.preference
+        )
+        actions += jax.random.normal(key, actions.shape) * self.exploration_epsilon
+        return jnp.clip(actions, -1.0, 1.0), PyTreeDict()
+
+    def evaluate_actions(
+        self, agent_state: AgentState, sample_batch: SampleBatch, key: chex.PRNGKey
+    ) -> tuple[Action, PolicyExtraInfo]:
+        del key
+        obs = sample_batch.obs
+        actions = self.actor_network.apply(
+            agent_state.params.actor_params, obs.state, obs.preference
+        )
+        return actions, PyTreeDict()
+
+    def critic_loss(
+        self, agent_state: AgentState, sample_batch: SampleBatch, key: chex.PRNGKey
+    ) -> LossDict:
+        obs = sample_batch.obs
+        next_state = sample_batch.extras.env_extras.ori_obs
+        next_actions = self.actor_network.apply(
+            agent_state.params.target_actor_params,
+            next_state,
+            obs.preference,
+        )
+        noise = jnp.clip(
+            jax.random.normal(key, next_actions.shape) * self.policy_noise,
+            -self.clip_policy_noise,
+            self.clip_policy_noise,
+        )
+        next_actions = jnp.clip(next_actions + noise, -1.0, 1.0)
+        next_q = self.critic_network.apply(
+            agent_state.params.target_critic_params,
+            next_state,
+            obs.preference,
+            next_actions,
+        )
+        target = vector_td_target(
+            sample_batch.rewards,
+            sample_batch.extras.env_extras.termination,
+            obs.preference,
+            next_q,
+            self.discount,
+        )
+        target = jax.lax.stop_gradient(target)
+        current_q = self.critic_network.apply(
+            agent_state.params.critic_params,
+            obs.state,
+            obs.preference,
+            sample_batch.actions,
+        )
+        projected = linear_rbf_project(obs.preference, agent_state.extra_state)
+        loss = vector_critic_loss(current_q, target, projected)
+        return PyTreeDict(critic_loss=loss, q_value=current_q.mean())
+
+    def actor_loss(
+        self, agent_state: AgentState, sample_batch: SampleBatch, key: chex.PRNGKey
+    ) -> LossDict:
+        del key
+        obs = sample_batch.obs
+        actions = self.actor_network.apply(
+            agent_state.params.actor_params, obs.state, obs.preference
+        )
+        q1 = self.critic_network.apply(
+            agent_state.params.critic_params,
+            obs.state,
+            obs.preference,
+            actions,
+        )[:, 0]
+        projected = linear_rbf_project(obs.preference, agent_state.extra_state)
+        loss = preference_actor_loss(
+            q1,
+            obs.preference,
+            projected,
+            self.angle_coefficient,
+        )
+        return PyTreeDict(actor_loss=loss)

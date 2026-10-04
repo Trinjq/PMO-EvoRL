@@ -3,6 +3,9 @@
 import jax
 import jax.numpy as jnp
 
+from evorl.sample_batch import SampleBatch
+from evorl.types import PyTreeDict
+
 from pmo_evorl.interpolator import (
     WALKER2D_KEY_OBJECTIVES,
     linear_rbf_project,
@@ -15,6 +18,7 @@ from pmo_evorl.mo_td3 import (
     directional_angle,
     select_target_vector_q,
     vector_td_target,
+    MOTD3Agent,
 )
 
 
@@ -86,6 +90,44 @@ def main() -> None:
         [[0.35938325, 0.90684321], [0.74972307, 0.58036140]]
     )
     assert bool(jnp.allclose(projected_rbf, scipy_reference, atol=1e-6))
+
+    class DummySpace:
+        def __init__(self, value):
+            self.value = value
+
+        def sample(self, key):
+            del key
+            return self.value
+
+    agent = MOTD3Agent(critic_network=critic, actor_network=actor)
+    obs_space = DummySpace(
+        PyTreeDict(state=jnp.zeros(17), preference=jnp.array([0.5, 0.5]))
+    )
+    action_space = DummySpace(jnp.zeros(6))
+    agent_state = agent.init(obs_space, action_space, jax.random.PRNGKey(2))
+    batch = SampleBatch(
+        obs=PyTreeDict(state=state, preference=preference),
+        actions=action,
+        rewards=jnp.ones((batch_size, 2)),
+        extras=PyTreeDict(
+            env_extras=PyTreeDict(
+                ori_obs=state + 0.1,
+                termination=jnp.zeros(batch_size),
+            )
+        ),
+    )
+    noisy_action, _ = jax.jit(agent.compute_actions)(
+        agent_state, SampleBatch(obs=batch.obs), jax.random.PRNGKey(3)
+    )
+    critic_metrics = jax.jit(agent.critic_loss)(
+        agent_state, batch, jax.random.PRNGKey(4)
+    )
+    actor_metrics = jax.jit(agent.actor_loss)(
+        agent_state, batch, jax.random.PRNGKey(5)
+    )
+    assert noisy_action.shape == (batch_size, 6)
+    assert bool(jnp.isfinite(critic_metrics.critic_loss))
+    assert bool(jnp.isfinite(actor_metrics.actor_loss))
     print("MO-TD3 network checks passed:", action.shape, vector_q.shape)
 
 
