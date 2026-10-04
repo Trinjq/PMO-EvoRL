@@ -48,6 +48,8 @@ def main() -> None:
     config.pareto_step_size = args.pareto_step_size
     if args.pareto_eval_batch_size is not None:
         config.pareto_eval_batch_size = args.pareto_eval_batch_size
+    if jax.default_backend() != "gpu":
+        raise RuntimeError("GPU benchmark requires the JAX GPU backend")
 
     build_started = time.perf_counter()
     workflow = MOTD3Workflow.build_from_config(config, enable_jit=True)

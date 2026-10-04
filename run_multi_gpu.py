@@ -74,6 +74,7 @@ def main() -> None:
             env = os.environ.copy()
             env["CUDA_VISIBLE_DEVICES"] = device
             env["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+            env["JAX_PLATFORMS"] = "cuda"
             process = subprocess.Popen(
                 train_command(args, seed, output_dir),
                 cwd=Path(__file__).parent,

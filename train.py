@@ -85,6 +85,8 @@ def main() -> None:
         parser.error(str(error))
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    if jax.default_backend() != "gpu":
+        raise RuntimeError("GPU training requires the JAX GPU backend")
 
     build_started = time.perf_counter()
     workflow = MOTD3Workflow.build_from_config(config, enable_jit=True)
