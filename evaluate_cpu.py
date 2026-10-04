@@ -13,6 +13,7 @@ os.environ["JAX_PLATFORMS"] = "cpu"
 
 import mujoco
 import numpy as np
+import jax
 import orbax.checkpoint as ocp
 
 _XML_PATH = (
@@ -62,7 +63,18 @@ def load_actor_layers(checkpoint: Path) -> list[tuple[np.ndarray, np.ndarray]]:
     checkpoint = checkpoint.resolve()
     item = checkpoint / "default" if (checkpoint / "default").is_dir() else checkpoint
     with ocp.StandardCheckpointer() as checkpointer:
-        restored = checkpointer.restore(item)
+        metadata = checkpointer.metadata(item).item_metadata.tree
+        cpu_sharding = jax.sharding.SingleDeviceSharding(jax.devices("cpu")[0])
+        target = jax.tree.map(
+            lambda value: jax.ShapeDtypeStruct(
+                value.shape, value.dtype, sharding=cpu_sharding
+            )
+            if isinstance(value, ocp.metadata.ArrayMetadata)
+            else value,
+            metadata,
+            is_leaf=lambda value: isinstance(value, ocp.metadata.ArrayMetadata),
+        )
+        restored = checkpointer.restore(item, target=target)
     try:
         params = restored[0]["params"]["actor_params"]["params"]["MLP_0"]
         layers = [
