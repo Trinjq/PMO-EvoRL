@@ -16,6 +16,8 @@ def main() -> None:
         "--config", default="configs/mo_td3_walker2d.yaml"
     )
     parser.add_argument("--num-envs", type=int)
+    parser.add_argument("--total-timesteps", type=int)
+    parser.add_argument("--output-dir")
     args = parser.parse_args()
     config = OmegaConf.load(args.config)
     if args.num_envs is not None:
@@ -24,6 +26,10 @@ def main() -> None:
         config.num_envs = args.num_envs
         config.num_updates_per_iter = args.num_envs // 10
         config.fold_iters = min(config.fold_iters, 100)
+    if args.total_timesteps is not None:
+        config.total_timesteps = args.total_timesteps
+    if args.output_dir is not None:
+        config.output_dir = args.output_dir
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 

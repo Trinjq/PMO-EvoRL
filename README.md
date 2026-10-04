@@ -13,6 +13,10 @@ python train.py
 # Current conservative accelerated setting: 8.86x provisional throughput.
 python train.py --num-envs 320
 
+# Short numerical-stability run with a separate artifact directory.
+python train.py --num-envs 320 --total-timesteps 320000 \
+  --output-dir outputs/smoke_320
+
 # Compare steady-state training throughput at the same update ratios.
 python benchmark.py --num-envs 10 --steps 10
 python benchmark.py --num-envs 320 --steps 10
