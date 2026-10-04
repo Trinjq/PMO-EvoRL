@@ -22,6 +22,7 @@
 | 项目 Python 包 | [`pmo_evorl/AGENTS.md`](pmo_evorl/AGENTS.md) | PD-MORL 扩展的代码边界与验证规则 |
 | 环境模块 | [`pmo_evorl/envs/AGENTS.md`](pmo_evorl/envs/AGENTS.md) | 多目标环境的契约和验证方法 |
 | 测试 | [`tests/AGENTS.md`](tests/AGENTS.md) | 最小可运行回归检查 |
+| 训练配置 | [`configs/AGENTS.md`](configs/AGENTS.md) | 超参数来源、采样/更新比例与运行配置 |
 
 ## 新模块落地规则
 

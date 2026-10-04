@@ -93,7 +93,7 @@ class PreferenceHERReplayBuffer(ReplayBuffer):
     """Relabel each transition with source-compatible random preferences."""
 
     weight_num: int = 3
-    learning_start_timesteps: int = 100_000
+    her_start_timesteps: int = 100_000
     seed: int = 0
 
     def add(self, buffer_state, xs, mask=None):
@@ -126,7 +126,7 @@ class PreferenceHERReplayBuffer(ReplayBuffer):
         )
         use_her = (
             buffer_state.buffer_size + jnp.arange(1, batch_size + 1)
-            > self.learning_start_timesteps
+            > self.her_start_timesteps
         )
         add_mask = jnp.concatenate(
             (

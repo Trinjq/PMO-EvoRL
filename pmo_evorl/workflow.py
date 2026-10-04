@@ -41,7 +41,7 @@ class MOTD3Workflow(TD3Workflow):
                 config.batch_size, config.learning_start_timesteps
             ),
             sample_batch_size=config.batch_size,
-            learning_start_timesteps=config.learning_start_timesteps,
+            her_start_timesteps=config.her_start_timesteps,
             weight_num=config.her_weight_num,
             seed=config.seed,
         )

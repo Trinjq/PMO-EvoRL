@@ -1,0 +1,40 @@
+# PD-MORL Walker2d source-parity baseline.
+num_envs: 10
+num_eval_envs: 10
+num_preference_workers: 10
+rollout_length: 1
+
+discount: 0.995
+exploration_epsilon: 0.1
+policy_noise: 0.2
+clip_policy_noise: 0.5
+angle_coefficient: 10.0
+tau: 0.005
+
+batch_size: 256
+replay_buffer_capacity: 2000000
+random_timesteps: 0
+# Original code begins learning once buffer size reaches 2 * batch * weight_num.
+learning_start_timesteps: 1540
+# Original start_timesteps(10000) is per each of 10 sampling processes.
+her_start_timesteps: 100000
+her_weight_num: 3
+
+# 10 critic and 1 actor update per 10 raw transitions.
+actor_update_interval: 10
+num_updates_per_iter: 1
+optimizer:
+  lr: 0.0003
+
+total_timesteps: 10000000
+fold_iters: 1000
+eval_interval: 50000
+eval_episodes: 10
+seed: 1
+
+output_dir: outputs/mo_td3_walker2d
+save_replay_buffer: false
+checkpoint:
+  enable: true
+  save_interval_steps: 50000
+  max_to_keep: 3

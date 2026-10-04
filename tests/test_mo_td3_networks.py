@@ -134,7 +134,7 @@ def main() -> None:
     replay = PreferenceHERReplayBuffer(
         capacity=64,
         sample_batch_size=8,
-        learning_start_timesteps=0,
+        her_start_timesteps=0,
     )
     replay_state = replay.init(jtu.tree_map(lambda value: value[0], batch))
     replay_state = jax.jit(replay.add)(replay_state, batch)
