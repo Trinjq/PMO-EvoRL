@@ -40,6 +40,7 @@ class PreferenceConditionedEnv(Env):
         preference_keys = jax.random.split(preference_key, self.num_envs)
         preference = self._sample(preference_keys)
         info = state.info.replace(
+            environment_termination=state.info.termination,
             preference=preference,
             preference_key=preference_keys,
         )
@@ -58,6 +59,8 @@ class PreferenceConditionedEnv(Env):
         preference = jnp.where(done, sampled_preference, old_preference)
         preference_keys = jnp.where(done, next_keys, old_keys)
         info = next_state.info.replace(
+            environment_termination=next_state.info.termination,
+            termination=next_state.done,
             preference=preference,
             preference_key=preference_keys,
         )
