@@ -18,6 +18,11 @@ python train.py --num-envs 320 --total-timesteps 320000 \
   --interpolator-eval-episodes 1 --eval-episodes 1 \
   --output-dir outputs/smoke_320
 
+# Use all three GPUs without changing one run's optimization batch:
+# each GPU runs one GPU-native 320-environment training seed.
+python run_multi_gpu.py --devices 0,1,2 --num-envs-per-gpu 320 \
+  --total-timesteps 10000000 --output-root outputs/three_gpu
+
 # Compare steady-state training throughput at the same update ratios.
 python benchmark.py --num-envs 10 --steps 10
 python benchmark.py --num-envs 320 --steps 10

@@ -36,3 +36,9 @@
 折叠训练把输入 state donation 给 JAX；调用方只使用返回的新 state，使 XLA 可以原位复用大容量 Replay Buffer 的设备内存，避免每个step复制整棵200万容量 buffer PyTree。
 
 这些结果只证明稳态吞吐提高，不证明达到相同 Hypervolume 所需的环境步数不变。正式结论必须比较相同随机种子、相同原始环境步数下的 Pareto Front、Hypervolume和墙钟时间。
+
+## 三 GPU 执行边界
+
+`run_multi_gpu.py` 为每张 GPU 分配一个独立随机种子。每个进程仍在指定 GPU 上执行批量 MJX 环境、Replay 采样和网络更新。这能在不改变单次 PD-MORL 训练的 Batch 与梯度语义的前提下，提高整组实验的总吞吐。
+
+该方式属于种子级并行，不是一个策略的同步数据并行。当前未启用同步三 GPU 训练：已安装的 EvoRL 多设备路径与 JAX 0.10.2 不兼容；同时，改变每卡 Batch 会改变有效优化 Batch。只有在保持算法语义的单策略缩放基准确认存在墙钟收益后，才加入同步数据并行。
