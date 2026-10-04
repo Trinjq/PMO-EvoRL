@@ -22,6 +22,7 @@ def main() -> None:
     parser.add_argument("--pareto-eval", action="store_true")
     parser.add_argument("--eval-episodes", type=int, default=1)
     parser.add_argument("--pareto-step-size", type=float, default=0.005)
+    parser.add_argument("--pareto-eval-batch-size", type=int)
     args = parser.parse_args()
     if args.key_eval and args.pareto_eval:
         parser.error("choose only one evaluation mode")
@@ -38,10 +39,17 @@ def main() -> None:
         config.interpolator_eval_episodes = 1
     config.eval_episodes = args.eval_episodes
     config.pareto_step_size = args.pareto_step_size
+    if args.pareto_eval_batch_size is not None:
+        config.pareto_eval_batch_size = args.pareto_eval_batch_size
 
+    build_started = time.perf_counter()
     workflow = MOTD3Workflow.build_from_config(config, enable_jit=True)
+    build_seconds = time.perf_counter() - build_started
     try:
+        init_started = time.perf_counter()
         state = workflow.init(jax.random.PRNGKey(config.seed))
+        jax.block_until_ready(state.metrics.sampled_timesteps)
+        init_seconds = time.perf_counter() - init_started
         if args.key_eval:
             state = workflow._update_interpolator(state, jnp.uint32(2))
             jax.block_until_ready(
@@ -55,8 +63,10 @@ def main() -> None:
             print({"key_evaluation_seconds": time.perf_counter() - started})
             return
         if args.pareto_eval:
+            warmup_started = time.perf_counter()
             metrics, state = workflow.evaluate(state)
             jax.block_until_ready(metrics.hypervolume)
+            warmup_seconds = time.perf_counter() - warmup_started
             started = time.perf_counter()
             metrics, state = workflow.evaluate(state)
             jax.block_until_ready(metrics.hypervolume)
@@ -65,8 +75,13 @@ def main() -> None:
                     "pareto_evaluation_seconds": time.perf_counter() - started,
                     "preferences": round(1 / args.pareto_step_size) + 1,
                     "episodes_per_preference": args.eval_episodes,
+                    "pareto_eval_batch_size": config.pareto_eval_batch_size,
+                    "build_seconds": build_seconds,
+                    "init_seconds": init_seconds,
+                    "first_evaluation_seconds": warmup_seconds,
                     **metrics.to_local_dict(),
-                }
+                },
+                flush=True,
             )
             return
         _, state = workflow._multi_steps(state)  # compile and warm up
