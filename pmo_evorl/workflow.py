@@ -181,26 +181,26 @@ class MOTD3Workflow(TD3Workflow):
 
     def evaluate(self, state):
         key, _ = jax.random.split(state.key)
-
-        def evaluate_batch(_, preferences):
-            returns = self._evaluate_preferences(
-                state.agent_state,
-                self.pareto_eval_env,
-                preferences,
-                jax.random.PRNGKey(11),
-            )
-            return None, returns
-
-        _, returns = jax.lax.scan(
-            evaluate_batch, None, self.pareto_preferences
-        )
-        returns = returns.reshape(-1, 2)[: self.pareto_sample_count]
+        returns = jnp.concatenate(
+            [
+                self._evaluate_pareto_batch(state.agent_state, preferences)
+                for preferences in self.pareto_preferences
+            ]
+        )[: self.pareto_sample_count]
         objectives = returns.reshape(-1, self.config.eval_episodes, 2).mean(1)
         metrics = MORLEvaluateMetric(
             hypervolume=hypervolume_2d(objectives),
             sparsity=sparsity(objectives),
         )
         return metrics, state.replace(key=key)
+
+    def _evaluate_pareto_batch(self, agent_state, preferences):
+        return self._evaluate_preferences(
+            agent_state,
+            self.pareto_eval_env,
+            preferences,
+            jax.random.PRNGKey(11),
+        )
 
     def learn(self, state):
         """Train until the raw-transition budget and always finalize once."""
@@ -252,10 +252,16 @@ class MOTD3Workflow(TD3Workflow):
 
     @classmethod
     def enable_jit(cls):
-        super().enable_jit()
+        cls.step = jax.jit(cls.step, static_argnums=(0,))
+        cls._postsetup_replaybuffer = jax.jit(
+            cls._postsetup_replaybuffer, static_argnums=(0,)
+        )
         cls._multi_steps = jax.jit(
             cls._multi_steps, static_argnums=(0,), donate_argnums=(1,)
         )
         cls._update_interpolator = jax.jit(
             cls._update_interpolator, static_argnums=(0,)
+        )
+        cls._evaluate_pareto_batch = jax.jit(
+            cls._evaluate_pareto_batch, static_argnums=(0,)
         )
