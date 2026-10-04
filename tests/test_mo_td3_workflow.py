@@ -39,6 +39,7 @@ def main() -> None:
             "eval_interval": 100,
             "eval_episodes": 1,
             "pareto_step_size": 0.5,
+            "pareto_eval_batch_size": 3,
         }
     )
     workflow = MOTD3Workflow.build_from_config(config, enable_jit=True)

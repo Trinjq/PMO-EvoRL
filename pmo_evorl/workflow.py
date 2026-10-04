@@ -91,8 +91,17 @@ class MOTD3Workflow(TD3Workflow):
         workflow.pareto_preferences = jnp.repeat(
             pareto_preferences, config.eval_episodes, axis=0
         )
+        workflow.pareto_sample_count = len(workflow.pareto_preferences)
+        batch_size = config.pareto_eval_batch_size
+        padded_count = (
+            (workflow.pareto_sample_count + batch_size - 1) // batch_size
+        ) * batch_size
+        workflow.pareto_preferences = jnp.pad(
+            workflow.pareto_preferences,
+            ((0, padded_count - workflow.pareto_sample_count), (0, 0)),
+        ).reshape(-1, batch_size, 2)
         workflow.pareto_eval_env = create_mo_walker2d_env(
-            len(workflow.pareto_preferences),
+            batch_size,
             num_preference_workers=1,
             autoreset=False,
         )
@@ -172,12 +181,20 @@ class MOTD3Workflow(TD3Workflow):
 
     def evaluate(self, state):
         key, _ = jax.random.split(state.key)
-        returns = self._evaluate_preferences(
-            state.agent_state,
-            self.pareto_eval_env,
-            self.pareto_preferences,
-            jax.random.PRNGKey(11),
+
+        def evaluate_batch(_, preferences):
+            returns = self._evaluate_preferences(
+                state.agent_state,
+                self.pareto_eval_env,
+                preferences,
+                jax.random.PRNGKey(11),
+            )
+            return None, returns
+
+        _, returns = jax.lax.scan(
+            evaluate_batch, None, self.pareto_preferences
         )
+        returns = returns.reshape(-1, 2)[: self.pareto_sample_count]
         objectives = returns.reshape(-1, self.config.eval_episodes, 2).mean(1)
         metrics = MORLEvaluateMetric(
             hypervolume=hypervolume_2d(objectives),

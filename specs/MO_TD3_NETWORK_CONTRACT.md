@@ -57,4 +57,4 @@ EvoRL 标准 Actor 只输入观测，Critic 输出标量 Q。本项目不改动�
 
 ## Pareto 评估
 
-周期评估使用源码的 `0.005` 偏好步长，共201个二维偏好，每个偏好运行3个确定性 episode。迁移版把这些 episode 作为 GPU 并行 MJX 环境执行，累积终止前的 Vector Reward，并以零向量为参考点计算二维最大化 Hypervolume；Sparsity 沿用源码对非支配目标点各维相邻间距平方和的定义。
+周期评估使用源码的 `0.005` 偏好步长，共201个二维偏好，每个偏好运行3个确定性 episode。迁移版以32路固定 GPU 批次复用同一个 MJX 评估图，避免为603路环境编译超大单图；累积终止前的 Vector Reward，并以零向量为参考点计算二维最大化 Hypervolume。Sparsity 沿用源码对非支配目标点各维相邻间距平方和的定义。
