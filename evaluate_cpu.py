@@ -3,8 +3,13 @@
 import argparse
 import hashlib
 import json
+import os
 import time
 from pathlib import Path
+
+# Orbax imports JAX; pin it to CPU before that import initializes a backend.
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+os.environ["JAX_PLATFORMS"] = "cpu"
 
 import mujoco
 import numpy as np
