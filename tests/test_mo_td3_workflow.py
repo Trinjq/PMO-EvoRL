@@ -77,6 +77,22 @@ def main() -> None:
     assert bool(jnp.isfinite(eval_metrics.sparsity))
     state = workflow.learn(state)
     assert int(state.metrics.sampled_timesteps) == 40
+    workflow.close()
+
+    lazy_config = OmegaConf.create(OmegaConf.to_container(config, resolve=True))
+    lazy_config.lazy_preference_her = True
+    lazy_config.sample_many = True
+    lazy_config.her_start_timesteps = 0
+    lazy_config.total_timesteps = 30
+    lazy_workflow = MOTD3Workflow.build_from_config(lazy_config, enable_jit=True)
+    lazy_state = lazy_workflow.init(jax.random.PRNGKey(0))
+    assert int(lazy_state.replay_buffer_state.buffer_size) == 20
+    lazy_metrics, lazy_state = lazy_workflow.step(lazy_state)
+    assert int(lazy_state.metrics.sampled_timesteps) == 30
+    assert int(lazy_state.replay_buffer_state.buffer_size) == 30
+    assert bool(jnp.isfinite(lazy_metrics.critic_loss))
+    assert bool(jnp.isfinite(lazy_metrics.actor_loss))
+    lazy_workflow.close()
     print(
         "MO-TD3 workflow check passed:",
         float(metrics.critic_loss),

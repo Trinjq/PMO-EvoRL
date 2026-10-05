@@ -3,7 +3,6 @@
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
-
 from evorl.sample_batch import SampleBatch
 from evorl.types import PyTreeDict
 
@@ -14,17 +13,18 @@ from pmo_evorl.interpolator import (
     normalize_objectives,
     update_key_objectives,
 )
-from pmo_evorl.networks import PreferenceActor, TwinVectorCritic
 from pmo_evorl.metrics import hypervolume_2d, sparsity
 from pmo_evorl.mo_td3 import (
+    LazyPreferenceHERReplayBuffer,
+    MOTD3Agent,
+    PreferenceHERReplayBuffer,
     actor_loss,
     critic_loss,
     directional_angle,
     select_target_vector_q,
     vector_td_target,
-    MOTD3Agent,
-    PreferenceHERReplayBuffer,
 )
+from pmo_evorl.networks import PreferenceActor, TwinVectorCritic
 
 
 def main() -> None:
@@ -170,6 +170,24 @@ def main() -> None:
     assert bool(
         jnp.allclose(stored_preferences[batch_size:].sum(axis=-1), 1.0)
     )
+
+    lazy_replay = LazyPreferenceHERReplayBuffer(
+        capacity=64,
+        sample_batch_size=8,
+        her_start_timesteps=0,
+    )
+    lazy_state = lazy_replay.init(jtu.tree_map(lambda value: value[0], batch))
+    lazy_state = jax.jit(lazy_replay.add)(lazy_state, batch)
+    assert int(lazy_state.buffer_size) == batch_size
+    lazy_batch = jax.jit(lazy_replay.sample)(
+        lazy_state, jax.random.PRNGKey(5)
+    )
+    assert lazy_batch.obs.preference.shape == (batch_size, 2)
+    lazy_batches = jax.jit(lazy_replay.sample_many, static_argnums=2)(
+        lazy_state, jax.random.PRNGKey(6), 3
+    )
+    assert lazy_batches.obs.preference.shape == (3, batch_size, 2)
+    assert bool(jnp.allclose(lazy_batches.obs.preference.sum(axis=-1), 1.0))
     print("MO-TD3 network checks passed:", action.shape, vector_q.shape)
 
 

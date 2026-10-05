@@ -1,5 +1,6 @@
-# PD-MORL Walker2d source-parity baseline.
-num_envs: 10
+# Source-parity optimized variant: same update ratio as PD-MORL, with lazy
+# preference HER and vectorized learner-batch preparation.
+num_envs: 640
 num_eval_envs: 10
 num_preference_workers: 10
 rollout_length: 1
@@ -14,34 +15,31 @@ tau: 0.005
 batch_size: 256
 replay_buffer_capacity: 2000000
 random_timesteps: 0
-# Original code begins learning once buffer size reaches 2 * batch * weight_num.
 learning_start_timesteps: 1540
-# Original start_timesteps(10000) is per each of 10 sampling processes.
 her_start_timesteps: 100000
 her_weight_num: 3
-lazy_preference_her: false
-sample_many: false
+lazy_preference_her: true
+sample_many: true
 interpolator_eval_episodes: 3
 key_update_interval: 1
 
-# 10 critic and 1 actor update per 10 raw transitions.
+# Same source-parity learning intensity: 1 critic and 0.1 actor update per raw transition.
 critic_updates_per_transition: 1.0
 actor_updates_per_transition: 0.1
 actor_update_interval: 10
-num_updates_per_iter: 1
+num_updates_per_iter: 64
 optimizer:
   lr: 0.0003
-  # Original PD-MORL clips both Actor and Critic gradient norms to 100.
   grad_clip_norm: 100.0
 
-total_timesteps: 10000000
-fold_iters: 1000
+total_timesteps: 1000000
+fold_iters: 100
 eval_episodes: 3
 pareto_step_size: 0.005
 pareto_eval_batch_size: 201
 seed: 1
 
-output_dir: outputs/mo_td3_walker2d
+output_dir: outputs/source_optimized_1m
 save_replay_buffer: false
 checkpoint:
   enable: true

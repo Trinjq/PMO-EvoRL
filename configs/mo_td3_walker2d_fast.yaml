@@ -17,6 +17,9 @@ random_timesteps: 0
 learning_start_timesteps: 1540
 her_start_timesteps: 100000
 her_weight_num: 3
+# Keep the measured B0 unchanged; enable these only in the optimized variant.
+lazy_preference_her: false
+sample_many: false
 interpolator_eval_episodes: 3
 key_update_interval: 1
 

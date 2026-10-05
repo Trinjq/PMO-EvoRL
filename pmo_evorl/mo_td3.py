@@ -1,17 +1,16 @@
 """MO-TD3 agent, vector target, and losses."""
 
 import chex
-from flax import linen as nn
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import optax
-
 from evorl.agent import Agent, AgentState
 from evorl.algorithms.td3 import TD3NetworkParams
 from evorl.replay_buffers import ReplayBuffer
 from evorl.sample_batch import SampleBatch
 from evorl.types import Action, LossDict, PolicyExtraInfo, PyTreeDict
+from flax import linen as nn
 
 from pmo_evorl.interpolator import (
     WALKER2D_KEY_OBJECTIVES,
@@ -136,6 +135,79 @@ class PreferenceHERReplayBuffer(ReplayBuffer):
             )
         )
         return super().add(buffer_state, augmented, add_mask)
+
+    def sample_many(self, buffer_state, key, num_samples):
+        """Sample multiple independent learner batches in one vectorized call."""
+        keys = jax.random.split(key, num_samples)
+        return jax.vmap(lambda sample_key: self.sample(buffer_state, sample_key))(
+            keys
+        )
+
+
+class LazyPreferenceHERReplayBuffer(ReplayBuffer):
+    """Store each raw transition once and relabel preferences on sampling."""
+
+    weight_num: int = 3
+    her_start_timesteps: int = 100_000
+    seed: int = 0
+
+    def init(self, spec):
+        her_available = jnp.zeros((), dtype=bool)
+        env_extras = spec.extras.env_extras.replace(her_available=her_available)
+        return super().init(
+            spec.replace(extras=spec.extras.replace(env_extras=env_extras))
+        )
+
+    def add(self, buffer_state, xs, mask=None):
+        if mask is not None:
+            raise ValueError("LazyPreferenceHERReplayBuffer owns its add mask")
+
+        batch_size = xs.obs.preference.shape[0]
+        her_available = (
+            buffer_state.buffer_size
+            + jnp.arange(1, batch_size + 1, dtype=jnp.int32)
+            > self.her_start_timesteps
+        )
+        env_extras = xs.extras.env_extras.replace(her_available=her_available)
+        xs = xs.replace(extras=xs.extras.replace(env_extras=env_extras))
+        return super().add(buffer_state, xs)
+
+    def _relabel(self, batch, key):
+        preference_key, her_key = jax.random.split(key)
+        preference = jnp.abs(
+            jax.random.normal(
+                preference_key,
+                (*batch.obs.preference.shape[:-1], batch.obs.preference.shape[-1]),
+            )
+        )
+        preference /= preference.sum(axis=-1, keepdims=True)
+        preference = jnp.round(preference, decimals=3)
+        her_probability = self.weight_num / (self.weight_num + 1)
+        use_her = batch.extras.env_extras.her_available & jax.random.bernoulli(
+            her_key,
+            p=her_probability,
+            shape=batch.extras.env_extras.her_available.shape,
+        )
+        obs = batch.obs.replace(
+            preference=jnp.where(use_her[..., None], preference, batch.obs.preference)
+        )
+        return batch.replace(obs=obs)
+
+    def sample(self, buffer_state, key):
+        sample_key, relabel_key = jax.random.split(key)
+        batch = super().sample(buffer_state, sample_key)
+        return self._relabel(batch, relabel_key)
+
+    def sample_many(self, buffer_state, key, num_samples):
+        sample_key, relabel_key = jax.random.split(key)
+        indices = jax.random.randint(
+            sample_key,
+            (num_samples, self.sample_batch_size),
+            minval=0,
+            maxval=buffer_state.buffer_size,
+        )
+        batch = jtu.tree_map(lambda value: value[indices], buffer_state.data)
+        return self._relabel(batch, relabel_key)
 
 
 class MOTD3Agent(Agent):

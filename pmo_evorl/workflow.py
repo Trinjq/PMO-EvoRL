@@ -5,13 +5,20 @@ import time
 import chex
 import jax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 import optax
-from evorl.algorithms.offpolicy_utils import skip_replay_buffer_state
-from evorl.algorithms.td3 import TD3Workflow
+from evorl.algorithms.offpolicy_utils import clean_trajectory, skip_replay_buffer_state
+from evorl.algorithms.td3 import TD3TrainMetric, TD3Workflow
+from evorl.distributed import psum
+from evorl.distributed.gradients import agent_gradient_update
 from evorl.evaluators import Evaluator
 from evorl.metrics import MetricBase
+from evorl.rollout import rollout
 from evorl.sample_batch import SampleBatch
 from evorl.types import PyTreeDict
+from evorl.utils import running_statistics
+from evorl.utils.jax_utils import scan_and_mean, tree_stop_gradient
+from evorl.utils.rl_toolkits import flatten_rollout_trajectory, soft_target_update
 
 from pmo_evorl.envs import create_mo_walker2d_env
 from pmo_evorl.interpolator import (
@@ -20,7 +27,11 @@ from pmo_evorl.interpolator import (
     update_key_objectives,
 )
 from pmo_evorl.metrics import hypervolume_2d, sparsity
-from pmo_evorl.mo_td3 import MOTD3Agent, PreferenceHERReplayBuffer
+from pmo_evorl.mo_td3 import (
+    LazyPreferenceHERReplayBuffer,
+    MOTD3Agent,
+    PreferenceHERReplayBuffer,
+)
 from pmo_evorl.networks import PreferenceActor, TwinVectorCritic
 
 
@@ -52,7 +63,12 @@ class MOTD3Workflow(TD3Workflow):
             optax.clip_by_global_norm(config.optimizer.grad_clip_norm),
             optax.adam(config.optimizer.lr),
         )
-        replay_buffer = PreferenceHERReplayBuffer(
+        replay_buffer_type = (
+            LazyPreferenceHERReplayBuffer
+            if config.get("lazy_preference_her", False)
+            else PreferenceHERReplayBuffer
+        )
+        replay_buffer = replay_buffer_type(
             capacity=config.replay_buffer_capacity,
             min_sample_timesteps=max(
                 config.batch_size, config.learning_start_timesteps
@@ -111,6 +127,192 @@ class MOTD3Workflow(TD3Workflow):
             autoreset=False,
         )
         return workflow
+
+    def step(self, state):
+        if not self.config.get("sample_many", False):
+            return super().step(state)
+
+        return self._step_sample_many(state)
+
+    def _step_sample_many(self, state):
+        key, rollout_key, learn_key = jax.random.split(state.key, num=3)
+        trajectory, env_state = rollout(
+            env_fn=self.env.step,
+            action_fn=self.agent.compute_actions,
+            env_state=state.env_state,
+            agent_state=state.agent_state,
+            key=rollout_key,
+            rollout_length=self.config.rollout_length,
+            env_extra_fields=("ori_obs", "termination"),
+        )
+        trajectory_dones = trajectory.dones
+        trajectory = tree_stop_gradient(
+            flatten_rollout_trajectory(clean_trajectory(trajectory))
+        )
+
+        agent_state = state.agent_state
+        if agent_state.obs_preprocessor_state is not None:
+            agent_state = agent_state.replace(
+                obs_preprocessor_state=running_statistics.update(
+                    agent_state.obs_preprocessor_state,
+                    trajectory.obs,
+                    dp_axis_name=self.dp_axis_name,
+                )
+            )
+
+        replay_buffer_state = self.replay_buffer.add(
+            state.replay_buffer_state, trajectory
+        )
+
+        def critic_loss_fn(agent_state, sample_batch, loss_key):
+            loss_dict = self.agent.critic_loss(agent_state, sample_batch, loss_key)
+            return loss_dict.critic_loss, loss_dict
+
+        def actor_loss_fn(agent_state, sample_batch, loss_key):
+            loss_dict = self.agent.actor_loss(agent_state, sample_batch, loss_key)
+            return loss_dict.actor_loss, loss_dict
+
+        critic_update_fn = agent_gradient_update(
+            critic_loss_fn,
+            self.optimizer,
+            dp_axis_name=self.dp_axis_name,
+            has_aux=True,
+            attach_fn=lambda current, params: current.replace(
+                params=current.params.replace(critic_params=params)
+            ),
+            detach_fn=lambda current: current.params.critic_params,
+        )
+        actor_update_fn = agent_gradient_update(
+            actor_loss_fn,
+            self.optimizer,
+            dp_axis_name=self.dp_axis_name,
+            has_aux=True,
+            attach_fn=lambda current, params: current.replace(
+                params=current.params.replace(actor_params=params)
+            ),
+            detach_fn=lambda current: current.params.actor_params,
+        )
+
+        num_actor_updates = self.config.num_updates_per_iter
+        critic_updates_per_actor = self.config.actor_update_interval
+        sample_key, update_key = jax.random.split(learn_key)
+        sample_batches = self.replay_buffer.sample_many(
+            replay_buffer_state,
+            sample_key,
+            num_actor_updates * critic_updates_per_actor,
+        )
+        sample_batches = jtu.tree_map(
+            lambda value: value.reshape(
+                (num_actor_updates, critic_updates_per_actor) + value.shape[1:]
+            ),
+            sample_batches,
+        )
+
+        def update_actor_step(carry, batches):
+            key, current_agent, opt_state = carry
+            critic_opt_state = opt_state.critic
+            actor_opt_state = opt_state.actor
+
+            def update_critic(carry, sample_batch):
+                key, current_agent, critic_opt_state = carry
+                key, loss_key = jax.random.split(key)
+                (_, _), current_agent, critic_opt_state = (
+                    critic_update_fn(
+                        critic_opt_state,
+                        current_agent,
+                        sample_batch,
+                        loss_key,
+                    )
+                )
+                return (key, current_agent, critic_opt_state), None
+
+            key, critic_key, actor_key = jax.random.split(key, num=3)
+            if critic_updates_per_actor > 1:
+                (
+                    (_, current_agent, critic_opt_state),
+                    _,
+                ) = jax.lax.scan(
+                    update_critic,
+                    (critic_key, current_agent, critic_opt_state),
+                    jtu.tree_map(lambda value: value[:-1], batches),
+                )
+
+            actor_batch = jtu.tree_map(lambda value: value[-1], batches)
+            (critic_loss, critic_loss_dict), current_agent, critic_opt_state = (
+                critic_update_fn(
+                    critic_opt_state,
+                    current_agent,
+                    actor_batch,
+                    critic_key,
+                )
+            )
+            (actor_loss, actor_loss_dict), current_agent, actor_opt_state = (
+                actor_update_fn(
+                    actor_opt_state,
+                    current_agent,
+                    actor_batch,
+                    actor_key,
+                )
+            )
+
+            target_actor_params = soft_target_update(
+                current_agent.params.target_actor_params,
+                current_agent.params.actor_params,
+                self.config.tau,
+            )
+            target_critic_params = soft_target_update(
+                current_agent.params.target_critic_params,
+                current_agent.params.critic_params,
+                self.config.tau,
+            )
+            current_agent = current_agent.replace(
+                params=current_agent.params.replace(
+                    target_actor_params=target_actor_params,
+                    target_critic_params=target_critic_params,
+                )
+            )
+            return (
+                (key, current_agent, opt_state.replace(
+                    actor=actor_opt_state, critic=critic_opt_state
+                )),
+                (critic_loss, actor_loss, critic_loss_dict, actor_loss_dict),
+            )
+
+        (key, agent_state, opt_state), (
+            critic_loss,
+            actor_loss,
+            critic_loss_dict,
+            actor_loss_dict,
+        ) = scan_and_mean(
+            update_actor_step,
+            (update_key, agent_state, state.opt_state),
+            sample_batches,
+        )
+        train_metrics = TD3TrainMetric(
+            actor_loss=actor_loss,
+            critic_loss=critic_loss,
+            raw_loss_dict=PyTreeDict({**critic_loss_dict, **actor_loss_dict}),
+        ).all_reduce(dp_axis_name=self.dp_axis_name)
+        sampled_timesteps = psum(
+            jnp.uint32(self.config.rollout_length * self.config.num_envs),
+            axis_name=self.dp_axis_name,
+        )
+        sampled_episodes = psum(
+            trajectory_dones.sum().astype(jnp.uint32), axis_name=self.dp_axis_name
+        )
+        workflow_metrics = state.metrics.replace(
+            sampled_timesteps=state.metrics.sampled_timesteps + sampled_timesteps,
+            sampled_episodes=state.metrics.sampled_episodes + sampled_episodes,
+            iterations=state.metrics.iterations + 1,
+        ).all_reduce(dp_axis_name=self.dp_axis_name)
+        return train_metrics, state.replace(
+            key=key,
+            metrics=workflow_metrics,
+            agent_state=agent_state,
+            env_state=env_state,
+            replay_buffer_state=replay_buffer_state,
+            opt_state=opt_state,
+        )
 
     def _setup_replaybuffer(self, key):
         dummy_obs = self.env.obs_space.sample(key)
@@ -229,7 +431,9 @@ class MOTD3Workflow(TD3Workflow):
                     "raw_transitions": state.metrics.sampled_timesteps.tolist(),
                     "critic_loss": train_metrics.critic_loss.tolist(),
                     "actor_loss": train_metrics.actor_loss.tolist(),
-                    "interpolator_updates": state.agent_state.extra_state.interpolator_updates.tolist(),
+                    "interpolator_updates": (
+                        state.agent_state.extra_state.interpolator_updates.tolist()
+                    ),
                 },
                 flush=True,
             )

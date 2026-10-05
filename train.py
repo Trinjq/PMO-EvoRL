@@ -4,6 +4,7 @@ import argparse
 import time
 from pathlib import Path
 
+
 def configure_update_schedule(config) -> None:
     """Derive integer TD3 loop counts from per-transition update ratios."""
     if (
@@ -48,6 +49,8 @@ def main() -> None:
     parser.add_argument("--fold-iters", type=int)
     parser.add_argument("--pareto-step-size", type=float)
     parser.add_argument("--pareto-eval-batch-size", type=int)
+    parser.add_argument("--lazy-preference-her", action="store_true", default=None)
+    parser.add_argument("--sample-many", action="store_true", default=None)
     args = parser.parse_args()
     config = OmegaConf.load(args.config)
     if args.num_envs is not None:
@@ -77,6 +80,10 @@ def main() -> None:
         config.pareto_step_size = args.pareto_step_size
     if args.pareto_eval_batch_size is not None:
         config.pareto_eval_batch_size = args.pareto_eval_batch_size
+    if args.lazy_preference_her is not None:
+        config.lazy_preference_her = args.lazy_preference_her
+    if args.sample_many is not None:
+        config.sample_many = args.sample_many
     if config.key_update_interval < 1:
         parser.error("--key-update-interval must be at least 1")
     try:

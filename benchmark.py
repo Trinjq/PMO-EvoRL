@@ -1,13 +1,13 @@
 """Measure synchronized PMO-EvoRL component and workflow performance."""
 
 import argparse
-from contextlib import nullcontext
-from importlib.metadata import PackageNotFoundError, version
 import json
-from pathlib import Path
 import statistics
 import subprocess
 import time
+from contextlib import nullcontext
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 
 import jax
 import jax.numpy as jnp
@@ -58,6 +58,14 @@ def _summary(samples: list[float]) -> dict[str, object]:
     return {"seconds": samples, "median_seconds": statistics.median(samples)}
 
 
+def _tree_nbytes(value) -> int:
+    return sum(
+        int(leaf.size * leaf.dtype.itemsize)
+        for leaf in jax.tree_util.tree_leaves(value)
+        if hasattr(leaf, "size") and hasattr(leaf, "dtype")
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="configs/mo_td3_walker2d.yaml")
@@ -85,6 +93,8 @@ def main() -> None:
     parser.add_argument("--pareto-eval-batch-size", type=int)
     parser.add_argument("--critic-updates-per-transition", type=float)
     parser.add_argument("--actor-updates-per-transition", type=float)
+    parser.add_argument("--lazy-preference-her", action="store_true", default=None)
+    parser.add_argument("--sample-many", action="store_true", default=None)
     args = parser.parse_args()
     if args.key_eval and args.pareto_eval:
         parser.error("choose only one legacy evaluation flag")
@@ -103,6 +113,10 @@ def main() -> None:
         config.critic_updates_per_transition = args.critic_updates_per_transition
     if args.actor_updates_per_transition is not None:
         config.actor_updates_per_transition = args.actor_updates_per_transition
+    if args.lazy_preference_her is not None:
+        config.lazy_preference_her = args.lazy_preference_her
+    if args.sample_many is not None:
+        config.sample_many = args.sample_many
     configure_update_schedule(config)
     config.fold_iters = args.steps
     config.replay_buffer_capacity = args.capacity
@@ -133,10 +147,13 @@ def main() -> None:
             "build_seconds": build_seconds,
             "init_seconds": init_seconds,
             "device": str(jax.devices()[0]),
+            "replay_buffer_bytes": _tree_nbytes(state.replay_buffer_state.data),
             "git_commit": _git_commit(),
             "git_dirty": _git_dirty(),
             "interpolator_eval_episodes": config.interpolator_eval_episodes,
             "key_update_interval": config.key_update_interval,
+            "lazy_preference_her": bool(config.get("lazy_preference_her", False)),
+            "sample_many": bool(config.get("sample_many", False)),
             "versions": {
                 name: _package_version(name)
                 for name in ("jax", "mujoco", "mujoco-mjx", "evorl", "optax")
@@ -269,7 +286,10 @@ def main() -> None:
                 json.dumps(
                     {
                         **common,
-                        "method": "train path minus env-only; includes policy and replay overhead",
+                        "method": (
+                            "train path minus env-only; includes policy "
+                            "and replay overhead"
+                        ),
                         "train_seconds": train_samples,
                         "env_seconds": env_samples,
                         **_summary(estimates),

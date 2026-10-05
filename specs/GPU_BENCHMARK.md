@@ -55,6 +55,8 @@
 
 [`../benchmark.py`](../benchmark.py) 默认使用正式 `2,000,000` capacity、一次预热和三次同步计时并报告中位数，同时记录有效 buffer 占用、设备、依赖版本和 Git commit。
 
+[`../benchmark_components.py`](../benchmark_components.py) 用于 Step 1 的分模块 microbenchmark；它在较小 capacity 下分别计时 rollout、原始 Replay add、eager/lazy HER add、sampling、Critic forward/update、Actor update、RBF projection、Key evaluation 和完整训练 iteration。该脚本只生成测量 JSON，不替代正式 `benchmark.py` 的 2M capacity 端到端门。
+
 - `full`：一个训练 fold 加一次 Key 更新，用于测量 Key 边界上的完整路径；
 - `train`：不含 Key 更新的训练路径；
 - `env-only`：固定零动作的批量 MJX step；

@@ -21,6 +21,7 @@ def main() -> None:
     check(320, 1.0, 0.1, (32, 10))
     check(640, 1.0, 0.1, (64, 10))
     check(640, 0.5, 0.05, (32, 10))
+    check(640, 0.25, 0.025, (16, 10))
     try:
         check(10, 1.0, 0.03, None)
     except ValueError:
