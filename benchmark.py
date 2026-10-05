@@ -143,6 +143,7 @@ def main() -> None:
             "steps_per_repeat": args.steps,
             "repeats": args.repeats,
             "replay_buffer_capacity": args.capacity,
+            "effective_replay_buffer_capacity": workflow.replay_buffer.capacity,
             "initial_buffer_size": initial_buffer_size,
             "build_seconds": build_seconds,
             "init_seconds": init_seconds,

@@ -68,8 +68,11 @@ class MOTD3Workflow(TD3Workflow):
             if config.get("lazy_preference_her", False)
             else PreferenceHERReplayBuffer
         )
+        replay_capacity = config.replay_buffer_capacity
+        if replay_buffer_type is LazyPreferenceHERReplayBuffer:
+            replay_capacity //= config.her_weight_num + 1
         replay_buffer = replay_buffer_type(
-            capacity=config.replay_buffer_capacity,
+            capacity=replay_capacity,
             min_sample_timesteps=max(
                 config.batch_size, config.learning_start_timesteps
             ),

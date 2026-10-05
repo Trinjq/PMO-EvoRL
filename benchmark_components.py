@@ -77,8 +77,11 @@ def _tree_nbytes(value) -> int:
 
 
 def _replay_buffer(config, buffer_type, spec):
+    capacity = config.replay_buffer_capacity
+    if buffer_type is LazyPreferenceHERReplayBuffer:
+        capacity //= config.her_weight_num + 1
     kwargs = {
-        "capacity": config.replay_buffer_capacity,
+        "capacity": capacity,
         "min_sample_timesteps": max(
             config.batch_size, config.learning_start_timesteps
         ),
@@ -298,6 +301,11 @@ def main() -> None:
                         "raw": int(raw_state.buffer_size),
                         "eager_her": int(eager_state.buffer_size),
                         "lazy_her": int(lazy_state.buffer_size),
+                    },
+                    "buffer_capacities": {
+                        "raw": raw_buffer.capacity,
+                        "eager_her": eager_buffer.capacity,
+                        "lazy_her": lazy_buffer.capacity,
                     },
                     "buffer_bytes": {
                         "raw": _tree_nbytes(raw_state.data),

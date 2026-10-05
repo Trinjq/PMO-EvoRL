@@ -85,6 +85,7 @@ def main() -> None:
     lazy_config.her_start_timesteps = 0
     lazy_config.total_timesteps = 30
     lazy_workflow = MOTD3Workflow.build_from_config(lazy_config, enable_jit=True)
+    assert lazy_workflow.replay_buffer.capacity == 64
     lazy_state = lazy_workflow.init(jax.random.PRNGKey(0))
     assert int(lazy_state.replay_buffer_state.buffer_size) == 20
     lazy_metrics, lazy_state = lazy_workflow.step(lazy_state)
