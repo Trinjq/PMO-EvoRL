@@ -83,3 +83,7 @@
 320环境的 env-only 中位数为1.393秒，train中位数为2.084秒，差值 learner-path 估计为0.690秒、约占33%。首个env样本30.823秒为共享GPU/额外编译异常值，由三样本中位数自然排除。learner未超过50%门槛，因此当前不测试减半更新强度。
 
 强制每10个训练step执行一次Key更新的 `full` 最坏边界中位数为5.394秒、593.3 transitions/s；这不是实际训练频率，只用于确认Key边界同步后的上限。
+
+### Warp 候选淘汰
+
+MJX-Warp 1.17.0 的单环境 build/forward/4-substep JIT 与小批量 Walker2d 契约检查可以运行；但640环境训练持续报告默认 contact buffer 的 broadphase/narrowphase overflow，已不满足环境正确性门槛。该无效运行的中位吞吐也只有1782.1 transitions/s，比同卡 JAX 的1995.6低10.7%。因此停止调整 contact buffer、graph mode等Warp专用参数，撤回正式配置接口，当前候选继续使用MJX-JAX。

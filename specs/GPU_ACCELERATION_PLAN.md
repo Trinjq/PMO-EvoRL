@@ -27,7 +27,7 @@
 2. 先分别测 vmap 和 RBF cache，再测组合版本；数值回归失败或没有稳定收益的复杂改动不保留。
 3. 组合版本比较320和640环境。只有640的完整训练吞吐比320至少高15%，才继续测1280。
 4. 对入选规模采集一次 JAX trace，确认环境、learner、Key评估和主机同步占比。
-5. 当前 MuJoCo/EvoRL 环境只有通过 Warp build/reset/step、环境契约和短程无 NaN 检查后，才允许增加 `mjx_impl` 配置。Warp 的完整 workflow 收益不足10%时淘汰，不搜索 graph mode 等次级参数。
+5. Warp 已因640环境 contact overflow 且吞吐低于JAX而淘汰；不增加 `mjx_impl` 正式配置，也不搜索 graph mode/contact buffer 等次级参数。
 
 最快且通过数值检查的语义等价配置成为新 B0。
 
