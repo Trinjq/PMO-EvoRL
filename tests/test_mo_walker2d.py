@@ -9,6 +9,8 @@ from evorl.envs.mujoco_playground import MjxEnvAdapter
 from evorl.envs.wrappers.training_wrapper import EpisodeWrapper, VmapWrapper
 from mujoco_playground._src import mjx_env
 
+# Lock the caller-selected backend before evaluate_cpu pins its CLI to CPU.
+jax.devices()
 from evaluate_cpu import observation, step_environment, validate_model
 from pmo_evorl.envs import MOWalker2d, create_mo_walker2d_env
 from pmo_evorl.envs.preference import PreferenceConditionedEnv
