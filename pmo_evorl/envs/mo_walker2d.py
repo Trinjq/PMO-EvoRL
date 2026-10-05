@@ -15,13 +15,11 @@ _XML_PATH = Path(__file__).with_name("assets") / "walker2d_pdmorl.xml"
 
 
 class MOWalker2d(MjxEnv):
-    """The original PD-MORL Walker2d contract on an MJX backend."""
+    """The original PD-MORL Walker2d contract on the MJX-JAX backend."""
 
-    def __init__(self, impl: str = "jax") -> None:
-        if impl not in {"jax", "warp"}:
-            raise ValueError("MJX implementation must be 'jax' or 'warp'")
+    def __init__(self) -> None:
         super().__init__(
-            config_dict.create(ctrl_dt=0.008, sim_dt=0.002, impl=impl)
+            config_dict.create(ctrl_dt=0.008, sim_dt=0.002, impl="jax")
         )
         self._mj_model = mujoco.MjModel.from_xml_path(self.xml_path)
         self._mjx_model = mjx.put_model(self._mj_model, impl=self._config.impl)

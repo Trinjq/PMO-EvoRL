@@ -83,5 +83,3 @@
 320环境的 env-only 中位数为1.393秒，train中位数为2.084秒，差值 learner-path 估计为0.690秒、约占33%。首个env样本30.823秒为共享GPU/额外编译异常值，由三样本中位数自然排除。learner未超过50%门槛，因此当前不测试减半更新强度。
 
 强制每10个训练step执行一次Key更新的 `full` 最坏边界中位数为5.394秒、593.3 transitions/s；这不是实际训练频率，只用于确认Key边界同步后的上限。
-
-MJX-Warp 1.17.0 在同一模型上已通过单环境 `put_model`、`make_data`、`forward` 和4个物理子步的JIT烟测，`qpos` 全部有限。该结果只允许加入 `mjx_impl` A/B接口；Warp仍需批量环境契约、短程训练和相对JAX至少10%的完整workflow收益才能晋级。

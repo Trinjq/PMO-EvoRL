@@ -1,7 +1,5 @@
 """Minimal executable contract check for MOWalker2d."""
 
-import os
-
 import jax
 import jax.numpy as jnp
 import mujoco
@@ -19,9 +17,8 @@ from pmo_evorl.envs.preference import PreferenceConditionedEnv
 
 
 def main() -> None:
-    impl = os.environ.get("PMO_MJX_IMPL", "jax")
-    env = MOWalker2d(impl)
-    assert env.mjx_model.impl.value == impl
+    env = MOWalker2d()
+    assert env.mjx_model.impl.value == "jax"
     assert env.mj_model.opt.integrator == mujoco.mjtIntegrator.mjINT_RK4
     assert env.sim_dt == 0.002
     assert env.dt == 0.008
@@ -76,7 +73,7 @@ def main() -> None:
     assert next_state.reward.shape == (2,)
     assert bool(jnp.allclose(next_state.reward, expected))
 
-    wrapped_env = create_mo_walker2d_env(num_envs=20, mjx_impl=impl)
+    wrapped_env = create_mo_walker2d_env(num_envs=20)
     states = jax.jit(wrapped_env.reset)(jax.random.PRNGKey(1))
     next_states = jax.jit(wrapped_env.step)(
         states, jnp.zeros((20, env.action_size))
@@ -92,10 +89,7 @@ def main() -> None:
     )
 
     eval_env = create_mo_walker2d_env(
-        num_envs=3,
-        num_preference_workers=3,
-        autoreset=False,
-        mjx_impl=impl,
+        num_envs=3, num_preference_workers=3, autoreset=False
     )
     eval_states = jax.jit(eval_env.reset)(jax.random.PRNGKey(2))
     eval_next = jax.jit(eval_env.step)(
@@ -103,31 +97,30 @@ def main() -> None:
     )
     assert eval_next.obs.state.shape == (3, 17)
     assert eval_next.reward.shape == (3, 2)
-    if impl == "jax":
-        serial_env = PreferenceConditionedEnv(
-            VmapWrapper(
-                EpisodeWrapper(MjxEnvAdapter(MOWalker2d()), episode_length=500),
-                num_envs=3,
-            ),
+    serial_env = PreferenceConditionedEnv(
+        VmapWrapper(
+            EpisodeWrapper(MjxEnvAdapter(MOWalker2d()), episode_length=500),
             num_envs=3,
-            num_workers=3,
-        )
-        serial_states = jax.jit(serial_env.reset)(jax.random.PRNGKey(2))
-        serial_next = jax.jit(serial_env.step)(
-            serial_states, jnp.zeros((3, env.action_size))
-        )
-        print(
-            "map/vmap max errors:",
-            float(jnp.max(jnp.abs(eval_next.obs.state - serial_next.obs.state))),
-            float(jnp.max(jnp.abs(eval_next.reward - serial_next.reward))),
-            flush=True,
-        )
-        assert bool(
-            jnp.allclose(eval_next.obs.state, serial_next.obs.state, atol=1e-7)
-        )
-        assert bool(jnp.allclose(eval_next.reward, serial_next.reward))
-        assert bool(jnp.array_equal(eval_next.done, serial_next.done))
-    print(f"MJX-{impl} Walker2d checks passed")
+        ),
+        num_envs=3,
+        num_workers=3,
+    )
+    serial_states = jax.jit(serial_env.reset)(jax.random.PRNGKey(2))
+    serial_next = jax.jit(serial_env.step)(
+        serial_states, jnp.zeros((3, env.action_size))
+    )
+    print(
+        "map/vmap max errors:",
+        float(jnp.max(jnp.abs(eval_next.obs.state - serial_next.obs.state))),
+        float(jnp.max(jnp.abs(eval_next.reward - serial_next.reward))),
+        flush=True,
+    )
+    assert bool(
+        jnp.allclose(eval_next.obs.state, serial_next.obs.state, atol=1e-7)
+    )
+    assert bool(jnp.allclose(eval_next.reward, serial_next.reward))
+    assert bool(jnp.array_equal(eval_next.done, serial_next.done))
+    print("MJX MOWalker2d single and preference-batch checks passed")
 
 
 if __name__ == "__main__":

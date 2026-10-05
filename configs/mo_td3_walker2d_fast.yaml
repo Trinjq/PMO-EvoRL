@@ -3,7 +3,6 @@ num_envs: 640
 num_eval_envs: 10
 num_preference_workers: 10
 rollout_length: 1
-mjx_impl: jax
 
 discount: 0.995
 exploration_epsilon: 0.1

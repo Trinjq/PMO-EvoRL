@@ -30,7 +30,6 @@ def train_command(args, seed: int, output_dir: Path) -> list[str]:
         "fold_iters",
         "pareto_step_size",
         "pareto_eval_batch_size",
-        "mjx_impl",
     ):
         value = getattr(args, name)
         if value is not None:
@@ -54,7 +53,6 @@ def main() -> None:
     parser.add_argument("--fold-iters", type=int)
     parser.add_argument("--pareto-step-size", type=float)
     parser.add_argument("--pareto-eval-batch-size", type=int)
-    parser.add_argument("--mjx-impl", choices=("jax", "warp"))
     args = parser.parse_args()
 
     devices = [item.strip() for item in args.devices.split(",") if item.strip()]

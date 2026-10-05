@@ -38,12 +38,7 @@ class MOTD3Workflow(TD3Workflow):
 
     @classmethod
     def _build_from_config(cls, config):
-        mjx_impl = config.get("mjx_impl", "jax")
-        env = create_mo_walker2d_env(
-            config.num_envs,
-            config.num_preference_workers,
-            mjx_impl=mjx_impl,
-        )
+        env = create_mo_walker2d_env(config.num_envs, config.num_preference_workers)
         agent = MOTD3Agent(
             actor_network=PreferenceActor(action_size=env.action_space.shape[0]),
             critic_network=TwinVectorCritic(reward_size=2),
@@ -71,7 +66,6 @@ class MOTD3Workflow(TD3Workflow):
             config.num_eval_envs,
             config.num_preference_workers,
             autoreset=False,
-            mjx_impl=mjx_impl,
         )
         evaluator = Evaluator(
             env=eval_env,
@@ -87,7 +81,6 @@ class MOTD3Workflow(TD3Workflow):
             len(key_preferences),
             num_preference_workers=3,
             autoreset=False,
-            mjx_impl=mjx_impl,
         )
         workflow.key_eval_env = key_env
         workflow.key_preferences = key_preferences
@@ -116,7 +109,6 @@ class MOTD3Workflow(TD3Workflow):
             batch_size,
             num_preference_workers=1,
             autoreset=False,
-            mjx_impl=mjx_impl,
         )
         return workflow
 

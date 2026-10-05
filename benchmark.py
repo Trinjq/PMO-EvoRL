@@ -85,7 +85,6 @@ def main() -> None:
     parser.add_argument("--pareto-eval-batch-size", type=int)
     parser.add_argument("--critic-updates-per-transition", type=float)
     parser.add_argument("--actor-updates-per-transition", type=float)
-    parser.add_argument("--mjx-impl", choices=("jax", "warp"))
     args = parser.parse_args()
     if args.key_eval and args.pareto_eval:
         parser.error("choose only one legacy evaluation flag")
@@ -100,8 +99,6 @@ def main() -> None:
     if args.num_envs % config.num_preference_workers:
         parser.error("--num-envs must be divisible by num_preference_workers")
     config.num_envs = args.num_envs
-    if args.mjx_impl is not None:
-        config.mjx_impl = args.mjx_impl
     if args.critic_updates_per_transition is not None:
         config.critic_updates_per_transition = args.critic_updates_per_transition
     if args.actor_updates_per_transition is not None:
@@ -140,7 +137,6 @@ def main() -> None:
             "git_dirty": _git_dirty(),
             "interpolator_eval_episodes": config.interpolator_eval_episodes,
             "key_update_interval": config.key_update_interval,
-            "mjx_impl": config.get("mjx_impl", "jax"),
             "versions": {
                 name: _package_version(name)
                 for name in ("jax", "mujoco", "mujoco-mjx", "evorl", "optax")

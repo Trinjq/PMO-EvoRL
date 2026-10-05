@@ -13,12 +13,9 @@ def create_mo_walker2d_env(
     num_envs: int = 10,
     num_preference_workers: int = 10,
     autoreset: bool = True,
-    mjx_impl: str = "jax",
 ) -> PreferenceConditionedEnv:
     """Build the 500-step, vectorized EvoRL environment."""
-    env = EpisodeWrapper(
-        MjxEnvAdapter(MOWalker2d(mjx_impl)), episode_length=500
-    )
+    env = EpisodeWrapper(MjxEnvAdapter(MOWalker2d()), episode_length=500)
     if autoreset:
         env = VmapAutoResetWrapper(env, num_envs=num_envs)
     else:

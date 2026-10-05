@@ -16,7 +16,7 @@
 
 ## 当前实现边界
 
-`MOWalker2d` 默认使用 MuJoCo MJX-JAX 在 GPU 上执行转换后的原 PD-MORL Walker2d 模型，并保留原始重置、动作裁剪、二维奖励、观测和终止公式。`mjx_impl=warp` 只用于通过本契约检查后的性能候选，严格基线默认仍为 `jax`。
+`MOWalker2d` 直接使用 MuJoCo MJX-JAX 在 GPU 上执行转换后的原 PD-MORL Walker2d 模型，并保留原始重置、动作裁剪、二维奖励、观测和终止公式。
 
 原 XML 的 SHA-256 为 `09A3A898E7B5F7F053AD7BD8F917766488B9100FA0FC4CEBBA39044E8A46E6E0`。由于现代 MuJoCo 不再接受 `coordinate="global"`，本项目用 MuJoCo 2.3.3 加载原文件后通过 `mj_saveLastXML` 转换为局部坐标 MJCF。转换后文件的 SHA-256 为 `C1E13C86CEFB857F681802332539916F82387F1F628BC2CBC0C33B17027D4123`。
 
