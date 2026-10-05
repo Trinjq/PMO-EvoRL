@@ -216,6 +216,7 @@ def main() -> None:
         key_eval_fn = jax.jit(
             lambda: workflow._evaluate_key_objectives(state.agent_state)
         )
+        full_iteration_fn = jax.jit(lambda value: workflow.step(value))
 
         stage_calls = {
             "rollout": (
@@ -261,7 +262,7 @@ def main() -> None:
                 lambda value: value,
             ),
             "full_iteration": (
-                lambda: workflow._multi_steps(state),
+                lambda: full_iteration_fn(state),
                 lambda value: value[1].metrics.iterations,
             ),
         }
