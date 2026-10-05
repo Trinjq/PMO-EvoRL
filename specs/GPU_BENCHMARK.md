@@ -87,3 +87,9 @@
 ### Warp 候选淘汰
 
 MJX-Warp 1.17.0 的单环境 build/forward/4-substep JIT 与小批量 Walker2d 契约检查可以运行；但640环境训练持续报告默认 contact buffer 的 broadphase/narrowphase overflow，已不满足环境正确性门槛。该无效运行的中位吞吐也只有1782.1 transitions/s，比同卡 JAX 的1995.6低10.7%。因此停止调整 contact buffer、graph mode等Warp专用参数，撤回正式配置接口，当前候选继续使用MJX-JAX。
+
+## 2026-10-05 语义等价 B0：100万步质量门
+
+在同一台共享服务器上，以 seed 1 运行640环境候选至1,025,920条原始 transition。训练过程中 Actor/Critic loss 均为有限值。CPU MuJoCo `201 preferences × 3 episodes` 评估得到 Hypervolume 3,667,026.65、Sparsity 2,667.80；旧320环境 B0 的对应结果为 Hypervolume 3,478,076.76、Sparsity 1,243.05。因此新候选 Hypervolume 为旧 B0 的105.4%，通过90%淘汰门。
+
+新候选 build、初始化、训练和CPU评估分别耗时71.30、118.48、689.54和42.83秒，完整可观测流程共922.15秒；旧 B0 对应为193.69、488.68、2811.29和103.64秒，共3597.30秒。共享 GPU 条件下诊断加速为3.90倍，超过最终1.5倍目标，但正式结论仍需以最终三 seed 实验为准。候选已晋级300万步 seeds 1/2。
