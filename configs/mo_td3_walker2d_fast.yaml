@@ -1,5 +1,5 @@
-# Provisional semantics-equivalent B0. See specs/GPU_ACCELERATION_PLAN.md.
-num_envs: 320
+# Provisional semantics-equivalent B0 selected by the throughput gate.
+num_envs: 640
 num_eval_envs: 10
 num_preference_workers: 10
 rollout_length: 1
@@ -24,7 +24,7 @@ key_update_interval: 1
 critic_updates_per_transition: 1.0
 actor_updates_per_transition: 0.1
 actor_update_interval: 10
-num_updates_per_iter: 32
+num_updates_per_iter: 64
 optimizer:
   lr: 0.0003
   # Preserve the original PD-MORL Actor/Critic gradient clipping.
@@ -37,7 +37,7 @@ pareto_step_size: 0.005
 pareto_eval_batch_size: 201
 seed: 1
 
-output_dir: outputs/screen_b0
+output_dir: outputs/screen_b0_vmap_1m
 save_replay_buffer: false
 checkpoint:
   enable: true
