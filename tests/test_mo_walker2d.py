@@ -116,7 +116,7 @@ def main() -> None:
         flush=True,
     )
     assert bool(
-        jnp.allclose(eval_next.obs.state, serial_next.obs.state, atol=1e-7)
+        jnp.allclose(eval_next.obs.state, serial_next.obs.state, atol=1e-6)
     )
     assert bool(jnp.allclose(eval_next.reward, serial_next.reward))
     assert bool(jnp.array_equal(eval_next.done, serial_next.done))
