@@ -125,6 +125,7 @@ def main() -> None:
     parser.add_argument("--steps", type=int, default=10)
     parser.add_argument("--capacity", type=int, default=100_000)
     parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--her-start-timesteps", type=int)
     parser.add_argument("--profile-dir", type=Path)
     args = parser.parse_args()
     if args.num_envs < 1 or args.steps < 1 or args.capacity < 1 or args.repeats < 1:
@@ -140,6 +141,8 @@ def main() -> None:
     config.fold_iters = args.steps
     config.replay_buffer_capacity = args.capacity
     config.checkpoint.enable = False
+    if args.her_start_timesteps is not None:
+        config.her_start_timesteps = args.her_start_timesteps
     if jax.default_backend() != "gpu":
         raise RuntimeError("component benchmark requires the JAX GPU backend")
 
