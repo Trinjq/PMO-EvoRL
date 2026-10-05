@@ -48,6 +48,7 @@ def main() -> None:
     parser.add_argument("--fold-iters", type=int)
     parser.add_argument("--pareto-step-size", type=float)
     parser.add_argument("--pareto-eval-batch-size", type=int)
+    parser.add_argument("--mjx-impl", choices=("jax", "warp"))
     args = parser.parse_args()
     config = OmegaConf.load(args.config)
     if args.num_envs is not None:
@@ -77,6 +78,8 @@ def main() -> None:
         config.pareto_step_size = args.pareto_step_size
     if args.pareto_eval_batch_size is not None:
         config.pareto_eval_batch_size = args.pareto_eval_batch_size
+    if args.mjx_impl is not None:
+        config.mjx_impl = args.mjx_impl
     if config.key_update_interval < 1:
         parser.error("--key-update-interval must be at least 1")
     try:

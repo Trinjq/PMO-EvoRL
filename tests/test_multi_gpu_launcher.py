@@ -19,6 +19,7 @@ def main() -> None:
         fold_iters=1,
         pareto_step_size=0.5,
         pareto_eval_batch_size=3,
+        mjx_impl="warp",
     )
     command = train_command(args, 3, Path("outputs/three_gpu/seed_3"))
     assert command[1] == "train.py"
@@ -32,6 +33,7 @@ def main() -> None:
     assert "--eval-episodes" not in command
     assert command[command.index("--fold-iters") + 1] == "1"
     assert command[command.index("--pareto-step-size") + 1] == "0.5"
+    assert command[command.index("--mjx-impl") + 1] == "warp"
     print("multi-GPU launcher check passed")
 
 
