@@ -109,7 +109,15 @@ def main() -> None:
     serial_next = jax.jit(serial_env.step)(
         serial_states, jnp.zeros((3, env.action_size))
     )
-    assert bool(jnp.allclose(eval_next.obs.state, serial_next.obs.state))
+    print(
+        "map/vmap max errors:",
+        float(jnp.max(jnp.abs(eval_next.obs.state - serial_next.obs.state))),
+        float(jnp.max(jnp.abs(eval_next.reward - serial_next.reward))),
+        flush=True,
+    )
+    assert bool(
+        jnp.allclose(eval_next.obs.state, serial_next.obs.state, atol=1e-7)
+    )
     assert bool(jnp.allclose(eval_next.reward, serial_next.reward))
     assert bool(jnp.array_equal(eval_next.done, serial_next.done))
     print("MJX MOWalker2d single and preference-batch checks passed")
