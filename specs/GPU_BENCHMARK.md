@@ -93,3 +93,9 @@ MJX-Warp 1.17.0 的单环境 build/forward/4-substep JIT 与小批量 Walker2d �
 在同一台共享服务器上，以 seed 1 运行640环境候选至1,025,920条原始 transition。训练过程中 Actor/Critic loss 均为有限值。CPU MuJoCo `201 preferences × 3 episodes` 评估得到 Hypervolume 3,667,026.65、Sparsity 2,667.80；旧320环境 B0 的对应结果为 Hypervolume 3,478,076.76、Sparsity 1,243.05。因此新候选 Hypervolume 为旧 B0 的105.4%，通过90%淘汰门。
 
 新候选 build、初始化、训练和CPU评估分别耗时71.30、118.48、689.54和42.83秒，完整可观测流程共922.15秒；旧 B0 对应为193.69、488.68、2811.29和103.64秒，共3597.30秒。共享 GPU 条件下诊断加速为3.90倍，超过最终1.5倍目标，但正式结论仍需以最终三 seed 实验为准。候选已晋级300万步 seeds 1/2。
+
+## 2026-10-05 语义等价 B0：300万步晋级门
+
+640环境候选的 seeds 1/2 均完成3,009,920条原始 transition，训练耗时分别为2291.47和2092.14秒，Actor/Critic loss 均保持有限。统一 CPU MuJoCo `201 preferences × 3 episodes` 评估得到：seed 1 的 Hypervolume 为4,172,738.08、Sparsity为1,168.51；seed 2 的 Hypervolume 为4,922,693.94、Sparsity为1,867.46。平均 Hypervolume 为4,547,716.01，是1M新 B0 的124.0%，两个 seed 均高于1M质量锚点。
+
+两项CPU评估并行运行并争用主机CPU，各耗时约168秒，因此该评估耗时只记录为本次实际墙钟，不用于单进程性能归因。候选质量稳定，已晋级最终1000万步 seeds 1/2/3。
