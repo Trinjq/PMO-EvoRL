@@ -14,7 +14,11 @@ from evorl.sample_batch import SampleBatch
 from evorl.types import PyTreeDict
 
 from pmo_evorl.envs import create_mo_walker2d_env
-from pmo_evorl.interpolator import KEY_PREFERENCES, update_key_objectives
+from pmo_evorl.interpolator import (
+    KEY_PREFERENCES,
+    fit_linear_rbf,
+    update_key_objectives,
+)
 from pmo_evorl.metrics import hypervolume_2d, sparsity
 from pmo_evorl.mo_td3 import MOTD3Agent, PreferenceHERReplayBuffer
 from pmo_evorl.networks import PreferenceActor, TwinVectorCritic
@@ -44,7 +48,10 @@ class MOTD3Workflow(TD3Workflow):
             clip_policy_noise=config.clip_policy_noise,
             angle_coefficient=config.angle_coefficient,
         )
-        optimizer = optax.adam(config.optimizer.lr)
+        optimizer = optax.chain(
+            optax.clip_by_global_norm(config.optimizer.grad_clip_norm),
+            optax.adam(config.optimizer.lr),
+        )
         replay_buffer = PreferenceHERReplayBuffer(
             capacity=config.replay_buffer_capacity,
             min_sample_timesteps=max(
@@ -128,7 +135,7 @@ class MOTD3Workflow(TD3Workflow):
         )
         extra_state = state.agent_state.extra_state.replace(
             key_objectives=raw,
-            projected_key_values=projected,
+            rbf_coefficients=fit_linear_rbf(projected),
             interpolator_updates=completed,
         )
         return state.replace(
@@ -208,12 +215,8 @@ class MOTD3Workflow(TD3Workflow):
         learn_started = time.perf_counter()
 
         while state.metrics.sampled_timesteps.tolist() < self.config.total_timesteps:
-            fold_started = time.perf_counter()
             train_metrics, state = self._multi_steps(state)
-            train_seconds = time.perf_counter() - fold_started
-            interpolator_started = time.perf_counter()
             state = self._maybe_update_interpolator(state)
-            interpolator_seconds = time.perf_counter() - interpolator_started
             iterations = state.metrics.iterations.tolist()
             is_final = (
                 state.metrics.sampled_timesteps.tolist() >= self.config.total_timesteps
@@ -227,8 +230,6 @@ class MOTD3Workflow(TD3Workflow):
                     "critic_loss": train_metrics.critic_loss.tolist(),
                     "actor_loss": train_metrics.actor_loss.tolist(),
                     "interpolator_updates": state.agent_state.extra_state.interpolator_updates.tolist(),
-                    "train_seconds": train_seconds,
-                    "interpolator_seconds": interpolator_seconds,
                 },
                 flush=True,
             )

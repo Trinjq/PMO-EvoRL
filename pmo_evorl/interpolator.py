@@ -23,12 +23,11 @@ def normalize_objectives(objectives: jax.Array, order: int = 2) -> jax.Array:
     return objectives / jnp.maximum(norm, 1e-8)
 
 
-def linear_rbf_project(
-    preference: jax.Array,
+def fit_linear_rbf(
     key_values: jax.Array,
     key_preferences: jax.Array = KEY_PREFERENCES,
 ) -> jax.Array:
-    """Match scipy RBFInterpolator(kernel='linear', degree=0)."""
+    """Fit scipy-compatible linear RBF coefficients for the three keys."""
     count = key_preferences.shape[0]
     kernel = -jnp.linalg.norm(
         key_preferences[:, None, :] - key_preferences[None, :, :], axis=-1
@@ -40,11 +39,19 @@ def linear_rbf_project(
     rhs = jnp.concatenate(
         (key_values, jnp.zeros((1, key_values.shape[-1]), dtype=key_values.dtype))
     )
-    coefficients = jnp.linalg.solve(system, rhs)
+    return jnp.linalg.solve(system, rhs)
+
+
+def evaluate_linear_rbf(
+    preference: jax.Array,
+    coefficients: jax.Array,
+    key_preferences: jax.Array = KEY_PREFERENCES,
+) -> jax.Array:
+    """Evaluate fitted linear RBF coefficients without solving again."""
     query_kernel = -jnp.linalg.norm(
         preference[:, None, :] - key_preferences[None, :, :], axis=-1
     )
-    return query_kernel @ coefficients[:count] + coefficients[count]
+    return query_kernel @ coefficients[:-1] + coefficients[-1]
 
 
 def update_key_objectives(

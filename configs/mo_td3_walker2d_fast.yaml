@@ -1,5 +1,5 @@
-# Speed-first A3 candidate. See specs/GPU_ACCELERATION_PLAN.md.
-num_envs: 640
+# Provisional semantics-equivalent B0. See specs/GPU_ACCELERATION_PLAN.md.
+num_envs: 320
 num_eval_envs: 10
 num_preference_workers: 10
 rollout_length: 1
@@ -17,16 +17,18 @@ random_timesteps: 0
 learning_start_timesteps: 1540
 her_start_timesteps: 100000
 her_weight_num: 3
-interpolator_eval_episodes: 1
-key_update_interval: 5
+interpolator_eval_episodes: 3
+key_update_interval: 1
 
-# A3 preserves the source learning intensity.
+# Preserve the source learning intensity until the learner gate is measured.
 critic_updates_per_transition: 1.0
 actor_updates_per_transition: 0.1
 actor_update_interval: 10
-num_updates_per_iter: 64
+num_updates_per_iter: 32
 optimizer:
   lr: 0.0003
+  # Preserve the original PD-MORL Actor/Critic gradient clipping.
+  grad_clip_norm: 100.0
 
 total_timesteps: 1000000
 fold_iters: 100
@@ -35,7 +37,7 @@ pareto_step_size: 0.005
 pareto_eval_batch_size: 201
 seed: 1
 
-output_dir: outputs/screen_a3
+output_dir: outputs/screen_b0
 save_replay_buffer: false
 checkpoint:
   enable: true

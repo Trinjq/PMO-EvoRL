@@ -28,6 +28,7 @@
 - Critic loss 对每个 Critic 计算 `directional_angle(wp,Q) + SmoothL1(Q,target)` 后求和。
 - Actor loss 仅使用 Q1：`-mean(w^TQ1) + 10 * mean(directional_angle(wp,Q1))`。
 - Directional angle 按原码把 cosine 裁剪到 `[0,0.9999]` 后计算角度制 `acos`。
+- Actor 和 Critic 均在 Adam 更新前将全局梯度范数裁剪到 100，与原码 `clip_grad_norm_(..., 100)` 一致。
 
 ## 三个 Key 与 Interpolator
 
@@ -39,7 +40,7 @@
 [2602.103564453125,  691.5010070800781]
 ```
 
-训练主程序启动时对它们做 L2 归一化，然后构建 `RBFInterpolator(kernel="linear")`。[`../pmo_evorl/interpolator.py`](../pmo_evorl/interpolator.py) 用纯 JAX 的4×4增广线性系统复现 SciPy 的 linear RBF 与常数多项式项，避免训练主路径发生 CPU 回调。
+训练主程序启动时对它们做 L2 归一化，然后构建 `RBFInterpolator(kernel="linear")`。[`../pmo_evorl/interpolator.py`](../pmo_evorl/interpolator.py) 用纯 JAX 的4×4增广线性系统复现 SciPy 的 linear RBF 与常数多项式项。系统只在初始化和 Key 更新时求解，系数保存在 Agent state；逐次 Actor/Critic loss 只执行查询核与系数乘法。
 
 源码在训练期间更新 Key 目标后改用 L1 归一化，与启动时的 L2 不一致。迁移版启动时使用 L2；源码计数器从1开始且使用严格 `>`，因此从所有偏好采样 worker 完成第2个 episode 起，每完成新一轮 episode 就以三个固定 Key preference 做确定性评估。每一行 Key objective 仅在对应 `w^T objective` 改善时替换，随后按源码行为对全部 Key objectives 做 L1 归一化并更新 Interpolator。
 

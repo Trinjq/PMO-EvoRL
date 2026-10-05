@@ -15,7 +15,8 @@ from evorl.types import Action, LossDict, PolicyExtraInfo, PyTreeDict
 
 from pmo_evorl.interpolator import (
     WALKER2D_KEY_OBJECTIVES,
-    linear_rbf_project,
+    evaluate_linear_rbf,
+    fit_linear_rbf,
     normalize_objectives,
 )
 
@@ -173,8 +174,8 @@ class MOTD3Agent(Agent):
             params=params,
             extra_state=PyTreeDict(
                 key_objectives=WALKER2D_KEY_OBJECTIVES,
-                projected_key_values=normalize_objectives(
-                    WALKER2D_KEY_OBJECTIVES
+                rbf_coefficients=fit_linear_rbf(
+                    normalize_objectives(WALKER2D_KEY_OBJECTIVES)
                 ),
                 interpolator_updates=jnp.ones((), dtype=jnp.uint32),
             ),
@@ -236,8 +237,8 @@ class MOTD3Agent(Agent):
             obs.preference,
             sample_batch.actions,
         )
-        projected = linear_rbf_project(
-            obs.preference, agent_state.extra_state.projected_key_values
+        projected = evaluate_linear_rbf(
+            obs.preference, agent_state.extra_state.rbf_coefficients
         )
         loss = vector_critic_loss(current_q, target, projected)
         return PyTreeDict(critic_loss=loss, q_value=current_q.mean())
@@ -256,8 +257,8 @@ class MOTD3Agent(Agent):
             obs.preference,
             actions,
         )[:, 0]
-        projected = linear_rbf_project(
-            obs.preference, agent_state.extra_state.projected_key_values
+        projected = evaluate_linear_rbf(
+            obs.preference, agent_state.extra_state.rbf_coefficients
         )
         loss = preference_actor_loss(
             q1,

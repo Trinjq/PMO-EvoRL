@@ -18,7 +18,7 @@ def main() -> None:
             "policy_noise": 0.2,
             "clip_policy_noise": 0.5,
             "angle_coefficient": 10.0,
-            "optimizer": {"lr": 3e-4},
+            "optimizer": {"lr": 3e-4, "grad_clip_norm": 100.0},
             "replay_buffer_capacity": 256,
             "batch_size": 8,
             "learning_start_timesteps": 20,
@@ -60,6 +60,7 @@ def main() -> None:
     assert bool(jnp.isfinite(metrics.critic_loss))
     assert bool(jnp.isfinite(metrics.actor_loss))
     assert int(state.agent_state.extra_state.interpolator_updates) == 1
+    assert state.agent_state.extra_state.rbf_coefficients.shape == (4, 2)
     state = workflow._maybe_update_interpolator(state)
     assert int(state.agent_state.extra_state.interpolator_updates) == 1
     state = state.replace(

@@ -5,10 +5,13 @@ import jax.numpy as jnp
 import mujoco
 import numpy as np
 from mujoco import mjx
+from evorl.envs.mujoco_playground import MjxEnvAdapter
+from evorl.envs.wrappers.training_wrapper import EpisodeWrapper, VmapWrapper
 from mujoco_playground._src import mjx_env
 
 from evaluate_cpu import observation, step_environment, validate_model
 from pmo_evorl.envs import MOWalker2d, create_mo_walker2d_env
+from pmo_evorl.envs.preference import PreferenceConditionedEnv
 
 
 def main() -> None:
@@ -82,6 +85,31 @@ def main() -> None:
     assert bool(
         jnp.allclose(next_states.obs.preference, states.obs.preference)
     )
+
+    eval_env = create_mo_walker2d_env(
+        num_envs=3, num_preference_workers=3, autoreset=False
+    )
+    eval_states = jax.jit(eval_env.reset)(jax.random.PRNGKey(2))
+    eval_next = jax.jit(eval_env.step)(
+        eval_states, jnp.zeros((3, env.action_size))
+    )
+    assert eval_next.obs.state.shape == (3, 17)
+    assert eval_next.reward.shape == (3, 2)
+    serial_env = PreferenceConditionedEnv(
+        VmapWrapper(
+            EpisodeWrapper(MjxEnvAdapter(MOWalker2d()), episode_length=500),
+            num_envs=3,
+        ),
+        num_envs=3,
+        num_workers=3,
+    )
+    serial_states = jax.jit(serial_env.reset)(jax.random.PRNGKey(2))
+    serial_next = jax.jit(serial_env.step)(
+        serial_states, jnp.zeros((3, env.action_size))
+    )
+    assert bool(jnp.allclose(eval_next.obs.state, serial_next.obs.state))
+    assert bool(jnp.allclose(eval_next.reward, serial_next.reward))
+    assert bool(jnp.array_equal(eval_next.done, serial_next.done))
     print("MJX MOWalker2d single and preference-batch checks passed")
 
 

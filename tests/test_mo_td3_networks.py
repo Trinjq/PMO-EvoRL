@@ -9,7 +9,8 @@ from evorl.types import PyTreeDict
 
 from pmo_evorl.interpolator import (
     WALKER2D_KEY_OBJECTIVES,
-    linear_rbf_project,
+    evaluate_linear_rbf,
+    fit_linear_rbf,
     normalize_objectives,
     update_key_objectives,
 )
@@ -87,13 +88,22 @@ def main() -> None:
     )
 
     rbf_query = jnp.array([[0.2, 0.8], [0.7, 0.3]])
-    projected_rbf = jax.jit(linear_rbf_project)(
-        rbf_query, normalize_objectives(WALKER2D_KEY_OBJECTIVES)
-    )
+    initial_key_values = normalize_objectives(WALKER2D_KEY_OBJECTIVES)
+    coefficients = jax.jit(fit_linear_rbf)(initial_key_values)
+    projected_rbf = jax.jit(evaluate_linear_rbf)(rbf_query, coefficients)
+    reference_gradient = jax.grad(
+        lambda query: evaluate_linear_rbf(
+            query, fit_linear_rbf(initial_key_values)
+        ).sum()
+    )(rbf_query)
+    cached_gradient = jax.grad(
+        lambda query: evaluate_linear_rbf(query, coefficients).sum()
+    )(rbf_query)
     scipy_reference = jnp.array(
         [[0.35938325, 0.90684321], [0.74972307, 0.58036140]]
     )
     assert bool(jnp.allclose(projected_rbf, scipy_reference, atol=1e-6))
+    assert bool(jnp.allclose(cached_gradient, reference_gradient, atol=1e-6))
 
     candidate_keys = WALKER2D_KEY_OBJECTIVES.at[0, 1].add(1.0).at[1].set(0.0)
     updated_keys, projected_keys = update_key_objectives(
@@ -102,6 +112,8 @@ def main() -> None:
     assert float(updated_keys[0, 1]) == float(candidate_keys[0, 1])
     assert bool(jnp.array_equal(updated_keys[1], WALKER2D_KEY_OBJECTIVES[1]))
     assert bool(jnp.allclose(projected_keys.sum(axis=-1), 1.0))
+    updated_coefficients = fit_linear_rbf(projected_keys)
+    assert not bool(jnp.allclose(coefficients, updated_coefficients))
 
     pareto_points = jnp.array([[1.0, 5.0], [3.0, 2.0], [2.0, 1.0]])
     assert bool(jnp.isclose(hypervolume_2d(pareto_points), 9.0))

@@ -4,13 +4,15 @@
 
 ## 目的与口径
 
-本基准回答：在不降低学习强度时，增加 GPU 并行环境数能否提高完整训练吞吐。所有配置固定：
+初测回答：在不降低学习强度时，增加 GPU 并行环境数能否提高训练 step 吞吐。所有配置固定：
 
 - 每条原始 transition 对应1次 Critic更新；
 - 每条原始 transition 对应0.1次 Actor/Target更新；
 - Batch size为256；
 - 每个配置先完成一次编译和 warm-up，再计时10个训练 iteration；
 - 计时包括 MJX 采样、Replay sampling、Critic/Actor反向传播和 Target更新，不包括首次 XLA 编译。
+
+初测使用 `100,000` replay capacity、一次 warm-up 和一次正式计时，不包含 Key 评估，因此下表不是端到端训练结论。
 
 ## 2026-10-04 初测结果
 
@@ -48,3 +50,16 @@
 `run_multi_gpu.py` 为每张 GPU 分配一个独立随机种子。每个进程仍在指定 GPU 上执行批量 MJX 环境、Replay 采样和网络更新。这能在不改变单次 PD-MORL 训练的 Batch 与梯度语义的前提下，提高整组实验的总吞吐。
 
 该方式属于种子级并行，不是一个策略的同步数据并行。当前未启用同步三 GPU 训练：已安装的 EvoRL 多设备路径与 JAX 0.10.2 不兼容；同时，改变每卡 Batch 会改变有效优化 Batch。只有在保持算法语义的单策略缩放基准确认存在墙钟收益后，才加入同步数据并行。
+
+## 2026-10-05 新测量协议
+
+[`../benchmark.py`](../benchmark.py) 默认使用正式 `2,000,000` capacity、一次预热和三次同步计时并报告中位数，同时记录有效 buffer 占用、设备、依赖版本和 Git commit。
+
+- `full`：一个训练 fold 加一次 Key 更新，用于测量 Key 边界上的完整路径；
+- `train`：不含 Key 更新的训练路径；
+- `env-only`：固定零动作的批量 MJX step；
+- `learner-only`：`train - env-only` 的估计值，明确包含策略推理和 Replay 开销；EvoRL 当前没有可复用的独立 learner 入口，不复制其 TD3 更新循环；
+- `key-eval`：三关键偏好评估和 RBF 更新；
+- `pareto-eval`：仅作 GPU 回归诊断，正式指标仍来自 CPU MuJoCo。
+
+每个模式先编译和 warm-up，再对三个连续样本取中位数。可用 `--profile-dir` 为首个正式训练样本生成 JAX trace。新协议的实测数字只在实验室 GPU 空闲且结果完成后追加到本文件。

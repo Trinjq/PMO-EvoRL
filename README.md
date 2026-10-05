@@ -28,9 +28,11 @@ python evaluate_cpu.py \
   --checkpoint outputs/three_gpu/seed_1/checkpoints/STEP \
   --output-dir outputs/three_gpu/seed_1/final_eval
 
-# Compare steady-state training throughput at the same update ratios.
-python benchmark.py --num-envs 10 --steps 10
-python benchmark.py --num-envs 320 --steps 10
+# Synchronized medians at the production replay capacity.
+python benchmark.py --num-envs 320 --mode full
+python benchmark.py --num-envs 320 --mode env-only
+python benchmark.py --num-envs 320 --mode learner-only
+python benchmark.py --num-envs 320 --mode key-eval
 ```
 
 On a shared server, set `CUDA_VISIBLE_DEVICES` to the assigned GPU before running.

@@ -29,6 +29,8 @@ actor_update_interval: 10
 num_updates_per_iter: 1
 optimizer:
   lr: 0.0003
+  # Original PD-MORL clips both Actor and Critic gradient norms to 100.
+  grad_clip_norm: 100.0
 
 total_timesteps: 10000000
 fold_iters: 1000

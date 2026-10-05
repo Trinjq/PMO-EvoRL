@@ -234,7 +234,8 @@ def main() -> None:
         layers, args.repeats, args.step_size, args.seed
     )
     evaluation_seconds = time.perf_counter() - evaluation_started
-    mean_returns = returns.mean(axis=0)
+    repeat_hypervolumes = [hypervolume_2d(repeat_returns) for repeat_returns in returns]
+    repeat_sparsities = [sparsity(repeat_returns) for repeat_returns in returns]
     metrics = {
         "checkpoint": str(args.checkpoint.resolve()),
         "preferences": len(preferences),
@@ -250,8 +251,10 @@ def main() -> None:
         "frame_skip": FRAME_SKIP,
         "episode_length": EPISODE_LENGTH,
         "reset_noise_scale": RESET_NOISE_SCALE,
-        "hypervolume": hypervolume_2d(mean_returns),
-        "sparsity": sparsity(mean_returns),
+        "hypervolume_per_repeat": repeat_hypervolumes,
+        "sparsity_per_repeat": repeat_sparsities,
+        "hypervolume": float(np.mean(repeat_hypervolumes)),
+        "sparsity": float(np.mean(repeat_sparsities)),
         "episode_length_mean": float(lengths.mean()),
         "episode_length_max": int(lengths.max()),
         "restore_seconds": restore_seconds,
