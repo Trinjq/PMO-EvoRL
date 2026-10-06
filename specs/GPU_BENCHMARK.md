@@ -282,3 +282,22 @@ seed 2 使用完全相同的 `fold_iters=10` 配置完成 `3,130 iterations / 2,
 | source ParetoCount | 277 | 522 | 261 |
 
 fold10 在两个 seed 上均消除了 fold100/3200 的 Pareto collapse，HV 和 ParetoCount 均达到或超过冻结 baseline；但 seed 3 的 Sparsity 明显高于 baseline，说明最终 front 的均匀性仍有 seed 依赖。两 seed 平均训练耗时为 `2,459.34 s`，相对冻结 baseline 的 `2,375.86 s` 增加约 `3.5%`，未构成明显墙钟退化。因此 fold10 可以作为当前 source-faithful 稳定候选，但因 seed3 Sparsity 波动，Step 8 只进入保守的 learner-side 单变量实验，不能宣称前 7 步质量已完全无条件稳定。seed2 artifact 位于实验室工作树 `outputs/pmo_phsl_v2/eval/diagnostic_seed2_fold10_2m_1001/`，训练日志为 `outputs/pmo_phsl_v2/logs/diagnostic_seed2_fold10_2m.log`。
+
+### v2 Step 8：learner-side GPU candidate 的保守筛选
+
+在 fold10 稳定候选上，先进行不改变环境和 preference 语义的 learner-side candidate1024 筛选。candidate 使用 batch size 1024、Critic/transition `0.25`、Actor/transition `0.025`、Lazy Preference HER 和 `sample_many()`；B0 使用 source-faithful eager-HER、batch size 256、Critic/transition `1.0`、Actor/transition `0.1`。两者均为 640 环境、fold10、seed 1，并在实验室 GPU 上训练 `1,000,000` raw transitions，再用相同的 CPU MuJoCo `1001 preferences × 3 episodes` 协议评估。
+
+先看稳态 fold benchmark：B0 的三次 full iteration 中位数为 `16.5402 s`，candidate 为 `10.0734 s`，局部吞吐比为 `1.64×`。但该差异没有转化为端到端训练收益：
+
+| 指标 | B0 fold10 seed 1 | candidate1024 seed 1 | candidate/B0 |
+| --- | ---: | ---: | ---: |
+| Raw transitions | 1,000,320 | 1,000,320 | 1.00× |
+| 训练时间/s | 842.40 | 812.11 | 0.964× |
+| Hypervolume | 3,839,451.51 | 2,871,732.89 | 0.748× |
+| Sparsity | 800.38 | 9,106.91 | 11.38× |
+| ParetoCount | 174 | 41 | 0.236× |
+| source HV | 3,743,280.21 | 2,681,014.65 | 0.716× |
+| source Sparsity | 476.17 | 7,347.80 | 15.43× |
+| source ParetoCount | 218 | 33 | 0.151× |
+
+candidate 的训练时间仅改善 `3.6%`，远低于 GPU 加速计划要求的端到端 `1.5×` 门；同时 HV 和 ParetoCount 明显下降，Sparsity 大幅恶化。因此 candidate1024 被拒绝，不启动 3M 双 seed 扩展，也不把该配置写入默认训练。该结果说明当前瓶颈不能通过单纯降低 learner 更新比例来解决：局部 batch/update benchmark 的收益不足以抵消学习质量损失和端到端固定开销。实验室 artifacts 为 `outputs/pmo_phsl_v2/train/step8_b0_fold10_seed1_1m/`、`outputs/pmo_phsl_v2/eval/step8_b0_fold10_seed1_1m_1001/`、`outputs/pmo_phsl_v2/train/step8_candidate1024_seed1_1m/` 和 `outputs/pmo_phsl_v2/eval/step8_candidate1024_seed1_1m_1001/`；benchmark 日志为 `outputs/pmo_phsl_v2/logs/step8_b0_fold10_full.json` 与 `step8_candidate1024_fold10_full.json`。
