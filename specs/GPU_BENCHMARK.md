@@ -301,3 +301,23 @@ fold10 在两个 seed 上均消除了 fold100/3200 的 Pareto collapse，HV 和 
 | source ParetoCount | 218 | 33 | 0.151× |
 
 candidate 的训练时间仅改善 `3.6%`，远低于 GPU 加速计划要求的端到端 `1.5×` 门；同时 HV 和 ParetoCount 明显下降，Sparsity 大幅恶化。因此 candidate1024 被拒绝，不启动 3M 双 seed 扩展，也不把该配置写入默认训练。该结果说明当前瓶颈不能通过单纯降低 learner 更新比例来解决：局部 batch/update benchmark 的收益不足以抵消学习质量损失和端到端固定开销。实验室 artifacts 为 `outputs/pmo_phsl_v2/train/step8_b0_fold10_seed1_1m/`、`outputs/pmo_phsl_v2/eval/step8_b0_fold10_seed1_1m_1001/`、`outputs/pmo_phsl_v2/train/step8_candidate1024_seed1_1m/` 和 `outputs/pmo_phsl_v2/eval/step8_candidate1024_seed1_1m_1001/`；benchmark 日志为 `outputs/pmo_phsl_v2/logs/step8_b0_fold10_full.json` 与 `step8_candidate1024_fold10_full.json`。
+
+### GPU-resident Step 1–5：device-side trigger 的 2M A/B
+
+提交 `f08b616` 将 interpolator trigger 放入 JAX `lax.cond`，在一个 100-iteration host fold 内按10 iterations分块检查；训练日志、metrics读取和 checkpoint 仍只在100-iteration边界返回 Host。提交 `b763443` 又将非整除 fold 的检查粒度改为最大公约数，避免自定义 fold 丢失尾部 iterations；严格源码配置保留原 trigger cadence，优化配置显式使用 `interpolator_check_iters=10`。实验室 64k smoke 通过：640 env、100 iterations、`raw_transitions=65,920`、loss finite，且只产生一个 host log/checkpoint 边界。
+
+固定 640 env、batch 256、Critic/transition `1.0`、Actor/transition `0.1`、eager HER、`interleave_her=false`、seed 1、2M raw-transition预算下，当前 GPU-resident B0 完成 `3,200 iterations / 2,049,920 raw transitions`。训练日志记录 `interpolator_updates=9`、`key_evaluation_count=8`、loss 全程 finite，训练墙钟为 `1,739.99 s`；CPU MuJoCo `1001 preferences × 3 episodes` 评估耗时 `419.76 s`。
+
+| 指标 | 旧冻结 B0 | GPU-resident B0 | 变化 |
+| --- | ---: | ---: | ---: |
+| 训练时间/s | 2,375.86 | 1,739.99 | 1.37× |
+| Hypervolume | 4,508,179.11 | 4,670,492.74 | +3.6% |
+| Sparsity | 387.44 | 700.39 | +80.8% |
+| ParetoCount | 238 | 197 | -17.2% |
+| source HV | 4,485,636.28 | 4,646,453.64 | +3.6% |
+| source Sparsity | 303.66 | 476.49 | +56.9% |
+| source ParetoCount | 277 | 249 | -10.1% |
+
+三次 full benchmark 的稳态时间为 `13.424 / 16.092 / 17.304 s`，中位数 `16.092 s`，raw throughput `397.708 transitions/s`；旧 B0 中位数为 `16.540 s`，局部 fold 仅提高 `1.03×`。当前版本从启动到 CPU 指标写出的实测时间约为 `60.81 + 132.70 + 1,739.99 + 421.48 = 2,354.98 s`；即使不计旧版本可能未记录的 build/init，训练加评估也只有约 `1.24×` 的保守上界，未达到 `1.5×` 端到端门槛。
+
+因此 GPU-resident Step 1–5 通过了 JAX 控制流、raw-transition预算、checkpoint边界和 loss finite 的工程验证，但没有同时通过质量等价与端到端加速晋级门：Sparsity 明显恶化、ParetoCount 下降，full benchmark 只有约 `3%` 收益。该路径保留为可追溯实验实现，不进入最终默认优化版本；不启动计划要求的 `10M × 3 seeds × 3 GPUs` 扩展，也不继续堆叠更复杂的 host/device 调度参数。实验室 artifacts 为 `outputs/pmo_phsl_v2/train/gpu_resident_b0_2m/`、`outputs/pmo_phsl_v2/eval/gpu_resident_b0_2m_1001/`、`outputs/pmo_phsl_v2/logs/gpu_resident_b0_2m.log` 和 `gpu_resident_b0_2m_full.json`。
