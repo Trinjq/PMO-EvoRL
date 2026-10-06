@@ -206,3 +206,9 @@ Step 3 提高了重复评估 HV 和 source Sparsity，但重复 ParetoCount 明�
 | source ParetoCount | 191 | 196 | +2.6% |
 
 交错插入提高了 HV 和 ParetoCount，但使 Sparsity 大幅恶化，因此通过了 insertion-order 语义回归，未通过 Pareto 覆盖质量门。该版本保留为 source-faithful 消融结果；正式结论不得把它描述为无条件优于 Step 3。训练输出保存在 `outputs/pmo_phsl_v2/train/step5_eager_her_interleaved_640_2m/`，日志为 `outputs/pmo_phsl_v2/logs/step5_eager_her_interleaved_640_2m.log` 和 `step5_eager_her_interleaved_640_2m_eval_1001.log`。
+
+### v2 Step 4 与 Step 6：已有实现的直接验证
+
+Step 4 的 global-L2 clipping 在当前 workflow 中由 `clip_by_global_norm(100.0)` 明确包在 Actor/Critic 共用 optimizer chain 的最前端。提交 `ac8005d` 增加了 raw/clipped gradient norm 统计；实验室 64k raw-transition 短训练日志记录到 Critic 的累计 raw norm `1297.10`，而 clipping 阈值为100，说明统计路径确实覆盖了需要裁剪的梯度；该短训练中 loss finite。Step 4 的 2M质量结果已由 Step 5 的同一 optimizer chain 共同覆盖，未另行重复一份仅改日志的2M训练。
+
+Step 6 的数学实现早于本轮计划：`fit_linear_rbf` 只在初始化或 interpolator 更新时求解，Actor/Critic loss 只调用缓存系数的 `evaluate_linear_rbf`。提交 `930f017` 将实验室网络回归扩展为100个随机 simplex preference，并同时比较 projection 与 query gradient，断言最大绝对误差不超过 `1e-5`；同一回归还检查 Actor/Critic loss 为 finite。由于 cached-RBF 已经包含在 Step 1 的冻结 baseline 中，Step 1 的2M结果就是该实现的质量锚点；没有再重复一个数学上相同、无代码差异的2M训练。
