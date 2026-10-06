@@ -246,6 +246,11 @@ def main() -> None:
     source_hypervolume = hypervolume_2d(mean_returns)
     source_sparsity = sparsity(mean_returns)
     source_pareto_count = pareto_count(mean_returns)
+    source_pareto_mask = nondominated_mask(mean_returns)
+    source_pareto_returns = mean_returns[source_pareto_mask]
+    objective_min = mean_returns.min(axis=0)
+    objective_max = mean_returns.max(axis=0)
+    objective_mean = mean_returns.mean(axis=0)
     metrics = {
         "checkpoint": str(args.checkpoint.resolve()),
         "preferences": len(preferences),
@@ -270,6 +275,9 @@ def main() -> None:
         "source_hv": source_hypervolume,
         "source_sparsity": source_sparsity,
         "source_pareto_count": source_pareto_count,
+        "objective_min": objective_min.tolist(),
+        "objective_max": objective_max.tolist(),
+        "objective_mean": objective_mean.tolist(),
         "episode_length_mean": float(lengths.mean()),
         "episode_length_max": int(lengths.max()),
         "restore_seconds": restore_seconds,
@@ -282,6 +290,12 @@ def main() -> None:
         preferences=preferences,
         returns_per_repeat=returns,
         mean_returns=mean_returns,
+        pareto_mask=source_pareto_mask,
+        pareto_returns=source_pareto_returns,
+        objective_min=objective_min,
+        objective_max=objective_max,
+        objective_mean=objective_mean,
+        evaluation_preference_grid=preferences,
         episode_lengths=lengths.reshape(args.repeats, len(preferences)),
         episode_seeds=episode_seeds.reshape(args.repeats, len(preferences)),
     )
