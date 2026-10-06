@@ -1,6 +1,7 @@
 """EvoRL workflow wiring for continuous PD-MORL."""
 
 import time
+import math
 from typing import NamedTuple
 
 import chex
@@ -208,6 +209,30 @@ class MOTD3Workflow(TD3Workflow):
         return next_state.replace(
             agent_state=next_state.agent_state.replace(extra_state=next_extra_state)
         )
+
+    def _multi_steps(self, state):
+        """Run one host fold while checking the interpolator on device."""
+        check_iters = min(
+            self.config.fold_iters,
+            self.config.get("interpolator_check_iters", 10),
+        )
+        num_checks = self.config.fold_iters // check_iters
+
+        def check_chunk(state, _):
+            def train_step(state, _):
+                train_metrics, state = self.step(state)
+                return state, train_metrics
+
+            state, train_metrics = jax.lax.scan(
+                train_step, state, None, length=check_iters
+            )
+            state = self._maybe_update_interpolator(state)
+            return state, jtu.tree_map(lambda value: value[-1], train_metrics)
+
+        state, train_metrics = jax.lax.scan(
+            check_chunk, state, None, length=num_checks
+        )
+        return jtu.tree_map(lambda value: value[-1], train_metrics), state
 
     def _step_sample_many(self, state):
         key, rollout_key, learn_key = jax.random.split(state.key, num=3)
@@ -448,13 +473,15 @@ class MOTD3Workflow(TD3Workflow):
                 )
             )
         )
-        completed = group_episode_count.min().tolist()
-        previous = state.agent_state.extra_state.interpolator_updates.tolist()
-        if completed >= previous + self.config.key_update_interval:
-            state = self._update_interpolator(
-                state, jnp.asarray(completed, dtype=jnp.uint32)
-            )
-        return state
+        completed = group_episode_count.min()
+        previous = state.agent_state.extra_state.interpolator_updates
+        should_update = completed >= previous + self.config.key_update_interval
+        return jax.lax.cond(
+            should_update,
+            lambda current: self._update_interpolator(current, completed),
+            lambda current: current,
+            state,
+        )
 
     def _evaluate_key_objectives(self, agent_state):
         returns = self._evaluate_preferences(
@@ -519,79 +546,74 @@ class MOTD3Workflow(TD3Workflow):
         """Train to the raw-transition budget and save before offline evaluation."""
         learn_started = time.perf_counter()
 
-        while state.metrics.sampled_timesteps.tolist() < self.config.total_timesteps:
+        initial_timesteps = int(jax.device_get(state.metrics.sampled_timesteps))
+        timesteps_per_iteration = self.config.rollout_length * self.config.num_envs
+        remaining_timesteps = max(self.config.total_timesteps - initial_timesteps, 0)
+        required_iterations = math.ceil(
+            remaining_timesteps / timesteps_per_iteration
+        )
+        fold_count = math.ceil(required_iterations / self.config.fold_iters)
+
+        for fold_index in range(fold_count):
             train_metrics, state = self._multi_steps(state)
-            state = self._maybe_update_interpolator(state)
-            iterations = state.metrics.iterations.tolist()
-            is_final = (
-                state.metrics.sampled_timesteps.tolist() >= self.config.total_timesteps
+            host_metrics = jax.device_get(
+                {
+                    "iterations": state.metrics.iterations,
+                    "raw_transitions": state.metrics.sampled_timesteps,
+                    "critic_loss": train_metrics.critic_loss,
+                    "actor_loss": train_metrics.actor_loss,
+                    "interpolator_updates": state.agent_state.extra_state.interpolator_updates,
+                    "random_transitions": state.agent_state.extra_state.logical_group_random_transition_count.sum(),
+                    "policy_transitions": state.agent_state.extra_state.logical_group_policy_transition_count.sum(),
+                    "random_transition_count_per_group": state.agent_state.extra_state.logical_group_random_transition_count,
+                    "policy_transition_count_per_group": state.agent_state.extra_state.logical_group_policy_transition_count,
+                    "random_action_fraction": state.agent_state.extra_state.logical_group_random_transition_count.sum()
+                    / jnp.maximum(
+                        state.agent_state.extra_state.logical_group_transition_count.sum(),
+                        1,
+                    ),
+                    "group_episode_count": state.agent_state.extra_state.logical_group_episode_count,
+                    "key_evaluation_count": state.agent_state.extra_state.key_evaluation_count,
+                    "key_replacement_count": state.agent_state.extra_state.key_replacement_count,
+                    "interpolator_refit_count": state.agent_state.extra_state.interpolator_refit_count,
+                    "actor_raw_grad_norm": state.opt_state.actor.raw_norm,
+                    "actor_clipped_grad_norm": state.opt_state.actor.clipped_norm,
+                    "critic_raw_grad_norm": state.opt_state.critic.raw_norm,
+                    "critic_clipped_grad_norm": state.opt_state.critic.clipped_norm,
+                    "actor_max_raw_grad_norm": state.opt_state.actor.max_raw_norm,
+                    "critic_max_raw_grad_norm": state.opt_state.critic.max_raw_norm,
+                    "actor_max_clipped_grad_norm": state.opt_state.actor.max_clipped_norm,
+                    "critic_max_clipped_grad_norm": state.opt_state.critic.max_clipped_norm,
+                }
             )
+            iterations = int(host_metrics["iterations"])
+            is_final = fold_index == fold_count - 1
             self.recorder.write(train_metrics.to_local_dict(), iterations)
             self.recorder.write(state.metrics.to_local_dict(), iterations)
             print(
                 {
                     "iterations": iterations,
-                    "raw_transitions": state.metrics.sampled_timesteps.tolist(),
-                    "critic_loss": train_metrics.critic_loss.tolist(),
-                    "actor_loss": train_metrics.actor_loss.tolist(),
-                    "interpolator_updates": (
-                        state.agent_state.extra_state.interpolator_updates.tolist()
-                    ),
-                    "random_transitions": int(
-                        state.agent_state.extra_state.logical_group_random_transition_count.sum()
-                    ),
-                    "policy_transitions": int(
-                        state.agent_state.extra_state.logical_group_policy_transition_count.sum()
-                    ),
-                    "random_transition_count_per_group": (
-                        state.agent_state.extra_state.logical_group_random_transition_count.tolist()
-                    ),
-                    "policy_transition_count_per_group": (
-                        state.agent_state.extra_state.logical_group_policy_transition_count.tolist()
-                    ),
-                    "random_action_fraction": float(
-                        state.agent_state.extra_state.logical_group_random_transition_count.sum()
-                        / jnp.maximum(
-                            state.agent_state.extra_state.logical_group_transition_count.sum(),
-                            1,
-                        )
-                    ),
-                    "group_episode_count": (
-                        state.agent_state.extra_state.logical_group_episode_count.tolist()
-                    ),
-                    "key_evaluation_count": int(
-                        state.agent_state.extra_state.key_evaluation_count
-                    ),
-                    "key_replacement_count": int(
-                        state.agent_state.extra_state.key_replacement_count
-                    ),
-                    "interpolator_refit_count": int(
-                        state.agent_state.extra_state.interpolator_refit_count
-                    ),
-                    "actor_raw_grad_norm": float(
-                        state.opt_state.actor.raw_norm
-                    ),
-                    "actor_clipped_grad_norm": float(
-                        state.opt_state.actor.clipped_norm
-                    ),
-                    "critic_raw_grad_norm": float(
-                        state.opt_state.critic.raw_norm
-                    ),
-                    "critic_clipped_grad_norm": float(
-                        state.opt_state.critic.clipped_norm
-                    ),
-                    "actor_max_raw_grad_norm": float(
-                        state.opt_state.actor.max_raw_norm
-                    ),
-                    "critic_max_raw_grad_norm": float(
-                        state.opt_state.critic.max_raw_norm
-                    ),
-                    "actor_max_clipped_grad_norm": float(
-                        state.opt_state.actor.max_clipped_norm
-                    ),
-                    "critic_max_clipped_grad_norm": float(
-                        state.opt_state.critic.max_clipped_norm
-                    ),
+                    "raw_transitions": int(host_metrics["raw_transitions"]),
+                    "critic_loss": float(host_metrics["critic_loss"]),
+                    "actor_loss": float(host_metrics["actor_loss"]),
+                    "interpolator_updates": int(host_metrics["interpolator_updates"]),
+                    "random_transitions": int(host_metrics["random_transitions"]),
+                    "policy_transitions": int(host_metrics["policy_transitions"]),
+                    "random_transition_count_per_group": host_metrics["random_transition_count_per_group"].tolist(),
+                    "policy_transition_count_per_group": host_metrics["policy_transition_count_per_group"].tolist(),
+                    "random_action_fraction": float(host_metrics["random_action_fraction"]),
+                    "group_episode_count": host_metrics["group_episode_count"].tolist(),
+                    "key_evaluation_count": int(host_metrics["key_evaluation_count"]),
+                    "key_replacement_count": int(host_metrics["key_replacement_count"]),
+                    "interpolator_refit_count": int(host_metrics["interpolator_refit_count"]),
+                    "actor_raw_grad_norm": float(host_metrics["actor_raw_grad_norm"]),
+                    "actor_clipped_grad_norm": float(host_metrics["actor_clipped_grad_norm"]),
+                    "critic_raw_grad_norm": float(host_metrics["critic_raw_grad_norm"]),
+                    "critic_clipped_grad_norm": float(host_metrics["critic_clipped_grad_norm"]),
+                    "actor_max_raw_grad_norm": float(host_metrics["actor_max_raw_grad_norm"]),
+                    "critic_max_raw_grad_norm": float(host_metrics["critic_max_raw_grad_norm"]),
+                    "actor_max_clipped_grad_norm": float(host_metrics["actor_max_clipped_grad_norm"]),
+                    "critic_max_clipped_grad_norm": float(host_metrics["critic_max_clipped_grad_norm"]),
                 },
                 flush=True,
             )
@@ -625,6 +647,9 @@ class MOTD3Workflow(TD3Workflow):
         )
         cls._multi_steps = jax.jit(
             cls._multi_steps, static_argnums=(0,), donate_argnums=(1,)
+        )
+        cls._maybe_update_interpolator = jax.jit(
+            cls._maybe_update_interpolator, static_argnums=(0,)
         )
         cls._update_interpolator = jax.jit(
             cls._update_interpolator, static_argnums=(0,)
