@@ -112,6 +112,27 @@ def main() -> None:
     )
     assert bool(jnp.allclose(projected_rbf, scipy_reference, atol=1e-6))
     assert bool(jnp.allclose(cached_gradient, reference_gradient, atol=1e-6))
+    random_preferences = jax.random.uniform(
+        jax.random.PRNGKey(8), (100, 2)
+    )
+    random_preferences /= random_preferences.sum(axis=-1, keepdims=True)
+    old_coefficients = fit_linear_rbf(initial_key_values)
+    old_projection = evaluate_linear_rbf(random_preferences, old_coefficients)
+    cached_projection = evaluate_linear_rbf(
+        random_preferences, coefficients
+    )
+    projection_error = jnp.max(jnp.abs(old_projection - cached_projection))
+    old_projection_gradient = jax.grad(
+        lambda query: evaluate_linear_rbf(query, old_coefficients).sum()
+    )(random_preferences)
+    cached_projection_gradient = jax.grad(
+        lambda query: evaluate_linear_rbf(query, coefficients).sum()
+    )(random_preferences)
+    gradient_error = jnp.max(
+        jnp.abs(old_projection_gradient - cached_projection_gradient)
+    )
+    assert float(projection_error) <= 1e-5
+    assert float(gradient_error) <= 1e-5
 
     candidate_keys = WALKER2D_KEY_OBJECTIVES.at[0, 1].add(1.0).at[1].set(0.0)
     updated_keys, projected_keys = update_key_objectives(

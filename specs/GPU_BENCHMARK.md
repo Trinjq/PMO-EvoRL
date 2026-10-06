@@ -189,3 +189,20 @@ Step 2 改善了 mean-return 网格的 source Sparsity，并提高了 source Par
 | source ParetoCount | 277 | 191 | -31.0% |
 
 Step 3 提高了重复评估 HV 和 source Sparsity，但重复 ParetoCount 明显下降，不能据此宣称全面优于 baseline；其主要证据是修复了 logical-group episode 语义并控制了 key 更新频率。训练输出保存在 `outputs/pmo_phsl_v2/train/step3_logical_group_interpolator_640_2m/`，日志为 `outputs/pmo_phsl_v2/logs/step3_logical_group_interpolator_640_2m.log` 和 `step3_logical_group_interpolator_640_2m_eval_1001.log`。
+
+### 2026-10-06 v2 Step 5：eager-HER source-compatible insertion order
+
+提交 `403e9e6` 将 eager HER 的写入顺序改为每条 raw transition 的 `原始、HER1、HER2、HER3`，并用实验室网络回归检查了原始 transition 与其 HER entries 的分组顺序及 preference 归一性。Step 4 的 global-L2 clipping仍由同一 optimizer chain提供：`clip_by_global_norm(100.0) → Adam`；裁剪算子的 raw/clipped norm 回归也在提交 `5e2cb6e` 中通过。
+
+在保留 Step 2 warm-up 和 Step 3 logical-group interpolator control 的条件下，完成 `3,200 iterations / 2,049,920 raw transitions`，训练墙钟为 `1,603.06 s`。1001个preference、每个preference 3个episode的 CPU MuJoCo 评估耗时 `341.19 s`：
+
+| 指标 | Step 3 control | Step 5 interleaved HER | 变化 |
+| --- | ---: | ---: | ---: |
+| Hypervolume | 4,616,349.96 | 4,867,783.38 | +5.45% |
+| Sparsity | 423.97 | 3,285.97 | +675% |
+| ParetoCount | 154 | 159 | +3.2% |
+| source HV | 4,519,039.92 | 4,834,480.83 | +6.98% |
+| source Sparsity | 209.19 | 2,847.02 | +1261% |
+| source ParetoCount | 191 | 196 | +2.6% |
+
+交错插入提高了 HV 和 ParetoCount，但使 Sparsity 大幅恶化，因此通过了 insertion-order 语义回归，未通过 Pareto 覆盖质量门。该版本保留为 source-faithful 消融结果；正式结论不得把它描述为无条件优于 Step 3。训练输出保存在 `outputs/pmo_phsl_v2/train/step5_eager_her_interleaved_640_2m/`，日志为 `outputs/pmo_phsl_v2/logs/step5_eager_her_interleaved_640_2m.log` 和 `step5_eager_her_interleaved_640_2m_eval_1001.log`。
