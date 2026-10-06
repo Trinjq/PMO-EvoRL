@@ -237,3 +237,18 @@ Step 6 的数学实现早于本轮计划：`fit_linear_rbf` 只在初始化或 i
 | source ParetoCount | 277 | 318 | 16 |
 
 seed 2 相对冻结 baseline 的重复 HV 和 ParetoCount 分别提高 `0.70%` 和 `12.18%`，但 seed 3 的三个重复评估均为 `HV=0`，且目标值范围为 `[-22.66, -1.14] × [-54.84, -23.75]`，属于明确的 Pareto collapse。由于多 seed 质量未稳定，Step 8 的 GPU-native learner 实验不启动；正式默认仍保持 source-faithful 语义，并保留 seed 3 结果作为后续稳定性诊断入口。评估 artifacts 分别位于实验室工作树 `outputs/pmo_phsl_v2/eval/default_semantics_seed2_2m_1001/` 和 `outputs/pmo_phsl_v2/eval/default_semantics_seed3_2m_1001/`。
+
+### seed 3 最终窗口诊断：3100 vs 3200 iterations
+
+为区分长期训练退化与最后一个训练窗口的突发崩溃，在完全相同的 seed 3 和配置下，将训练停止在 `3,100 iterations / 1,985,920 raw transitions`，并对该 checkpoint 执行正式的 `1001 preferences × 3 episodes` CPU MuJoCo 评估。3100 checkpoint 的训练 loss 全程 finite，最终 `critic_loss=7.65`、`actor_loss=-699.64`；训练耗时 `2,571.73 s`。结果如下：
+
+| 指标 | 冻结 baseline（seed 1） | seed 3 @3100 | seed 3 @3200 |
+| --- | ---: | ---: | ---: |
+| Hypervolume | 4,508,179.11 | 4,489,697.39 | 0.00 |
+| Sparsity | 387.44 | 400.88 | 16.82 |
+| ParetoCount | 238 | 177 | 9 |
+| source HV | 4,485,636.28 | 4,403,605.46 | 0.00 |
+| source Sparsity | 303.66 | 158.81 | 4.94 |
+| source ParetoCount | 277 | 219 | 16 |
+
+3100 checkpoint 的三次 repeat HV 为 `4,470,699 / 4,425,737 / 4,572,656`，ParetoCount 为 `179 / 173 / 181`，平均 episode length 为 `346.56`；3200 checkpoint 的三次 repeat 均为 `HV=0`，episode length 平均仅 `73.06`。因此 seed 3 的失败定位为最后 100 iterations 内的策略崩溃，而不是评估协议或整个训练轨迹从早期开始失效。3100 结果不能替代计划要求的 2M 默认结果，因为它少了 `64,000` raw transitions；在找到稳定性修复前，Step 8 继续保持暂停。诊断 artifacts 位于实验室工作树 `outputs/pmo_phsl_v2/eval/diagnostic_seed3_3100_1001/`，训练日志为 `outputs/pmo_phsl_v2/logs/diagnostic_seed3_3100.log`。
