@@ -229,7 +229,26 @@ def main() -> None:
     replay_state = jax.jit(replay.add)(replay_state, batch)
     assert int(replay_state.buffer_size) == batch_size * 4
     stored_preferences = replay_state.data.obs.preference[: replay_state.buffer_size]
-    grouped_preferences = stored_preferences.reshape(batch_size, 4, 2)
+    assert bool(jnp.allclose(stored_preferences[:batch_size], preference))
+    assert bool(
+        jnp.allclose(stored_preferences[batch_size:].sum(axis=-1), 1.0)
+    )
+
+    interleaved_replay = PreferenceHERReplayBuffer(
+        capacity=64,
+        sample_batch_size=8,
+        her_start_timesteps=0,
+        interleave=True,
+    )
+    interleaved_state = interleaved_replay.init(
+        jtu.tree_map(lambda value: value[0], batch)
+    )
+    interleaved_state = jax.jit(interleaved_replay.add)(
+        interleaved_state, batch
+    )
+    grouped_preferences = interleaved_state.data.obs.preference[
+        : interleaved_state.buffer_size
+    ].reshape(batch_size, 4, 2)
     assert bool(jnp.allclose(grouped_preferences[:, 0], preference))
     assert bool(
         jnp.allclose(grouped_preferences[:, 1:].sum(axis=-1), 1.0)

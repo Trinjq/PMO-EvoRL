@@ -95,6 +95,7 @@ class PreferenceHERReplayBuffer(ReplayBuffer):
     weight_num: int = 3
     her_start_timesteps: int = 100_000
     seed: int = 0
+    interleave: bool = False
 
     def add(self, buffer_state, xs, mask=None):
         if mask is not None:
@@ -119,36 +120,51 @@ class PreferenceHERReplayBuffer(ReplayBuffer):
         relabeled = relabeled.replace(
             obs=relabeled.obs.replace(preference=preferences)
         )
-        augmented = jtu.tree_map(
-            lambda original, her: jnp.concatenate(
-                (
-                    original[:, None],
-                    her.reshape((batch_size, self.weight_num) + her.shape[1:]),
-                ),
-                axis=1,
-            ),
-            xs,
-            relabeled,
-        )
-        augmented = jtu.tree_map(
-            lambda value: value.reshape(
-                (batch_size * (self.weight_num + 1),) + value.shape[2:]
-            ),
-            augmented,
-        )
         use_her = (
             buffer_state.buffer_size + jnp.arange(1, batch_size + 1)
             > self.her_start_timesteps
         )
-        add_mask = jnp.concatenate(
-            (
-                jnp.ones((batch_size, 1), dtype=bool),
-                jnp.broadcast_to(
-                    use_her[:, None], (batch_size, self.weight_num)
+        if self.interleave:
+            augmented = jtu.tree_map(
+                lambda original, her: jnp.concatenate(
+                    (
+                        original[:, None],
+                        her.reshape(
+                            (batch_size, self.weight_num) + her.shape[1:]
+                        ),
+                    ),
+                    axis=1,
                 ),
-            ),
-            axis=1,
-        ).reshape(-1)
+                xs,
+                relabeled,
+            )
+            augmented = jtu.tree_map(
+                lambda value: value.reshape(
+                    (batch_size * (self.weight_num + 1),) + value.shape[2:]
+                ),
+                augmented,
+            )
+            add_mask = jnp.concatenate(
+                (
+                    jnp.ones((batch_size, 1), dtype=bool),
+                    jnp.broadcast_to(
+                        use_her[:, None], (batch_size, self.weight_num)
+                    ),
+                ),
+                axis=1,
+            ).reshape(-1)
+        else:
+            augmented = jtu.tree_map(
+                lambda original, her: jnp.concatenate((original, her), axis=0),
+                xs,
+                relabeled,
+            )
+            add_mask = jnp.concatenate(
+                (
+                    jnp.ones(batch_size, dtype=bool),
+                    jnp.repeat(use_her, self.weight_num),
+                )
+            )
         return super().add(buffer_state, augmented, add_mask)
 
     def sample_many(self, buffer_state, key, num_samples):

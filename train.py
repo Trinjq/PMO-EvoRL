@@ -50,6 +50,7 @@ def main() -> None:
     parser.add_argument("--pareto-step-size", type=float)
     parser.add_argument("--pareto-eval-batch-size", type=int)
     parser.add_argument("--lazy-preference-her", action="store_true", default=None)
+    parser.add_argument("--interleave-her", action="store_true", default=None)
     parser.add_argument("--sample-many", action="store_true", default=None)
     args = parser.parse_args()
     config = OmegaConf.load(args.config)
@@ -82,6 +83,8 @@ def main() -> None:
         config.pareto_eval_batch_size = args.pareto_eval_batch_size
     if args.lazy_preference_her is not None:
         config.lazy_preference_her = args.lazy_preference_her
+    if args.interleave_her is not None:
+        config.interleave_her = args.interleave_her
     if args.sample_many is not None:
         config.sample_many = args.sample_many
     if config.key_update_interval < 1:

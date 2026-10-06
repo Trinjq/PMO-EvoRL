@@ -121,6 +121,7 @@ class MOTD3Workflow(TD3Workflow):
             her_start_timesteps=config.her_start_timesteps,
             weight_num=config.her_weight_num,
             seed=config.seed,
+            interleave=config.get("interleave_her", False),
         )
         eval_env = create_mo_walker2d_env(
             config.num_eval_envs,
