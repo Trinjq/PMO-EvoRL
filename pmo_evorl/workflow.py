@@ -583,6 +583,12 @@ class MOTD3Workflow(TD3Workflow):
                     "critic_max_raw_grad_norm": float(
                         state.opt_state.critic.max_raw_norm
                     ),
+                    "actor_max_clipped_grad_norm": float(
+                        state.opt_state.actor.max_clipped_norm
+                    ),
+                    "critic_max_clipped_grad_norm": float(
+                        state.opt_state.critic.max_clipped_norm
+                    ),
                 },
                 flush=True,
             )
