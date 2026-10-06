@@ -212,3 +212,9 @@ Step 3 提高了重复评估 HV 和 source Sparsity，但重复 ParetoCount 明�
 Step 4 的 global-L2 clipping 在当前 workflow 中由 `clip_by_global_norm(100.0)` 明确包在 Actor/Critic 共用 optimizer chain 的最前端。提交 `ac8005d` 增加了 raw/clipped gradient norm 统计；实验室 64k raw-transition 短训练日志记录到 Critic 的累计 raw norm `1297.10`，而 clipping 阈值为100，说明统计路径确实覆盖了需要裁剪的梯度；该短训练中 loss finite。Step 4 的 2M质量结果已由 Step 5 的同一 optimizer chain 共同覆盖，未另行重复一份仅改日志的2M训练。
 
 Step 6 的数学实现早于本轮计划：`fit_linear_rbf` 只在初始化或 interpolator 更新时求解，Actor/Critic loss 只调用缓存系数的 `evaluate_linear_rbf`。提交 `930f017` 将实验室网络回归扩展为100个随机 simplex preference，并同时比较 projection 与 query gradient，断言最大绝对误差不超过 `1e-5`；同一回归还检查 Actor/Critic loss 为 finite。由于 cached-RBF 已经包含在 Step 1 的冻结 baseline 中，Step 1 的2M结果就是该实现的质量锚点；没有再重复一个数学上相同、无代码差异的2M训练。
+
+### v2 Step 7：evaluation 双轨指标与可追溯输出
+
+提交 `04aa6fe` 已将 CPU evaluator 升级为每个 repeat 独立计算 HV、Sparsity 和 ParetoCount，同时对 `mean return per preference` 计算 `source_hv`、`source_sparsity` 和 `source_pareto_count`。1001-point正式评估已在 Step 1、Step 2、Step 3 和 Step 5 完成；每次结果均保存三次 repeat 指标及其 ParetoCount。
+
+提交 `d51ec45` 进一步在 `returns.npz` 中保存 `preferences`、`evaluation_preference_grid`、`returns_per_repeat`、`mean_returns`、`pareto_mask`、`pareto_returns`、`objective_min/max/mean`、episode lengths 和 episode seeds；`metrics.json` 同步保存 objective statistics。实验室 artifact check 已验证这些数组实际存在（例如 `pareto_returns` 形状为 `(39,2)`，`objective_min` 形状为 `(2,)`），因此 Step 7 的 collapse 诊断和 preference→return 追溯要求均已覆盖。
