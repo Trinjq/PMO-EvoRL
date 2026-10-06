@@ -252,3 +252,18 @@ seed 2 相对冻结 baseline 的重复 HV 和 ParetoCount 分别提高 `0.70%` �
 | source ParetoCount | 277 | 219 | 16 |
 
 3100 checkpoint 的三次 repeat HV 为 `4,470,699 / 4,425,737 / 4,572,656`，ParetoCount 为 `179 / 173 / 181`，平均 episode length 为 `346.56`；3200 checkpoint 的三次 repeat 均为 `HV=0`，episode length 平均仅 `73.06`。因此 seed 3 的失败定位为最后 100 iterations 内的策略崩溃，而不是评估协议或整个训练轨迹从早期开始失效。3100 结果不能替代计划要求的 2M 默认结果，因为它少了 `64,000` raw transitions；在找到稳定性修复前，Step 8 继续保持暂停。诊断 artifacts 位于实验室工作树 `outputs/pmo_phsl_v2/eval/diagnostic_seed3_3100_1001/`，训练日志为 `outputs/pmo_phsl_v2/logs/diagnostic_seed3_3100.log`。
+
+### fold_iters=10 的 2M 预算修复：seed 3
+
+为同时缩小最后一折的预算超出和末段不稳定窗口，将同一 source-faithful 配置的 `fold_iters` 从100降为10，在实验室重新运行 seed 3。训练最终为 `3,130 iterations / 2,005,120 raw transitions`，超出目标仅 `5,120` 条 raw transitions，训练耗时 `2,692.21 s`；loss 全程 finite，最终记录为 `critic_loss=7.32`、`actor_loss=-695.31`。相同的 `1001 preferences × 3 episodes` CPU MuJoCo 评估耗时 `387.26 s`，结果如下：
+
+| 指标 | 冻结 baseline（seed 1） | fold10 seed 3 |
+| --- | ---: | ---: |
+| Hypervolume | 4,508,179.11 | 4,721,302.81 |
+| Sparsity | 387.44 | 1,050.86 |
+| ParetoCount | 238 | 231 |
+| source HV | 4,485,636.28 | 4,631,600.38 |
+| source Sparsity | 303.66 | 755.06 |
+| source ParetoCount | 277 | 261 |
+
+fold10 在 seed 3 上恢复了正常目标范围（`objective_min=[30.77,48.86]`），没有复现 fold100/3200 的 Pareto collapse；相较 fold100/3200 的 `HV=0`、`ParetoCount=9`，这是有效的稳定性修复信号。但 `fold_iters=10` 的训练吞吐显著降低，且单个 seed 不能通过多 seed 质量门；seed 2 同配置复核完成前，Step 8 仍不启动。artifact 位于实验室工作树 `outputs/pmo_phsl_v2/eval/diagnostic_seed3_fold10_2m_1001/`，训练日志为 `outputs/pmo_phsl_v2/logs/diagnostic_seed3_fold10_2m.log`。
