@@ -120,9 +120,21 @@ class PreferenceHERReplayBuffer(ReplayBuffer):
             obs=relabeled.obs.replace(preference=preferences)
         )
         augmented = jtu.tree_map(
-            lambda original, her: jnp.concatenate((original, her), axis=0),
+            lambda original, her: jnp.concatenate(
+                (
+                    original[:, None],
+                    her.reshape((batch_size, self.weight_num) + her.shape[1:]),
+                ),
+                axis=1,
+            ),
             xs,
             relabeled,
+        )
+        augmented = jtu.tree_map(
+            lambda value: value.reshape(
+                (batch_size * (self.weight_num + 1),) + value.shape[2:]
+            ),
+            augmented,
         )
         use_her = (
             buffer_state.buffer_size + jnp.arange(1, batch_size + 1)
@@ -130,10 +142,13 @@ class PreferenceHERReplayBuffer(ReplayBuffer):
         )
         add_mask = jnp.concatenate(
             (
-                jnp.ones(batch_size, dtype=bool),
-                jnp.repeat(use_her, self.weight_num),
-            )
-        )
+                jnp.ones((batch_size, 1), dtype=bool),
+                jnp.broadcast_to(
+                    use_her[:, None], (batch_size, self.weight_num)
+                ),
+            ),
+            axis=1,
+        ).reshape(-1)
         return super().add(buffer_state, augmented, add_mask)
 
     def sample_many(self, buffer_state, key, num_samples):

@@ -200,9 +200,10 @@ def main() -> None:
     replay_state = jax.jit(replay.add)(replay_state, batch)
     assert int(replay_state.buffer_size) == batch_size * 4
     stored_preferences = replay_state.data.obs.preference[: replay_state.buffer_size]
-    assert bool(jnp.allclose(stored_preferences[:batch_size], preference))
+    grouped_preferences = stored_preferences.reshape(batch_size, 4, 2)
+    assert bool(jnp.allclose(grouped_preferences[:, 0], preference))
     assert bool(
-        jnp.allclose(stored_preferences[batch_size:].sum(axis=-1), 1.0)
+        jnp.allclose(grouped_preferences[:, 1:].sum(axis=-1), 1.0)
     )
 
     lazy_replay = LazyPreferenceHERReplayBuffer(
