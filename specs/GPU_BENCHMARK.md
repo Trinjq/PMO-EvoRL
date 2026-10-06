@@ -266,4 +266,19 @@ seed 2 相对冻结 baseline 的重复 HV 和 ParetoCount 分别提高 `0.70%` �
 | source Sparsity | 303.66 | 755.06 |
 | source ParetoCount | 277 | 261 |
 
-fold10 在 seed 3 上恢复了正常目标范围（`objective_min=[30.77,48.86]`），没有复现 fold100/3200 的 Pareto collapse；相较 fold100/3200 的 `HV=0`、`ParetoCount=9`，这是有效的稳定性修复信号。但 `fold_iters=10` 的训练吞吐显著降低，且单个 seed 不能通过多 seed 质量门；seed 2 同配置复核完成前，Step 8 仍不启动。artifact 位于实验室工作树 `outputs/pmo_phsl_v2/eval/diagnostic_seed3_fold10_2m_1001/`，训练日志为 `outputs/pmo_phsl_v2/logs/diagnostic_seed3_fold10_2m.log`。
+fold10 在 seed 3 上恢复了正常目标范围（`objective_min=[30.77,48.86]`），没有复现 fold100/3200 的 Pareto collapse；相较 fold100/3200 的 `HV=0`、`ParetoCount=9`，这是有效的稳定性修复信号。artifact 位于实验室工作树 `outputs/pmo_phsl_v2/eval/diagnostic_seed3_fold10_2m_1001/`，训练日志为 `outputs/pmo_phsl_v2/logs/diagnostic_seed3_fold10_2m.log`。
+
+### fold_iters=10 的多 seed 复核：质量门结果
+
+seed 2 使用完全相同的 `fold_iters=10` 配置完成 `3,130 iterations / 2,005,120 raw transitions`，训练耗时 `2,226.47 s`，最终 `critic_loss=10.09`、`actor_loss=-690.11`，全程 finite；CPU 正式评估耗时 `374.76 s`。两 seed 结果如下：
+
+| 指标 | 冻结 baseline（seed 1） | fold10 seed 2 | fold10 seed 3 |
+| --- | ---: | ---: | ---: |
+| Hypervolume | 4,508,179.11 | 4,909,123.80 | 4,721,302.81 |
+| Sparsity | 387.44 | 190.79 | 1,050.86 |
+| ParetoCount | 238 | 426 | 231 |
+| source HV | 4,485,636.28 | 4,903,357.21 | 4,631,600.38 |
+| source Sparsity | 303.66 | 167.21 | 755.06 |
+| source ParetoCount | 277 | 522 | 261 |
+
+fold10 在两个 seed 上均消除了 fold100/3200 的 Pareto collapse，HV 和 ParetoCount 均达到或超过冻结 baseline；但 seed 3 的 Sparsity 明显高于 baseline，说明最终 front 的均匀性仍有 seed 依赖。两 seed 平均训练耗时为 `2,459.34 s`，相对冻结 baseline 的 `2,375.86 s` 增加约 `3.5%`，未构成明显墙钟退化。因此 fold10 可以作为当前 source-faithful 稳定候选，但因 seed3 Sparsity 波动，Step 8 只进入保守的 learner-side 单变量实验，不能宣称前 7 步质量已完全无条件稳定。seed2 artifact 位于实验室工作树 `outputs/pmo_phsl_v2/eval/diagnostic_seed2_fold10_2m_1001/`，训练日志为 `outputs/pmo_phsl_v2/logs/diagnostic_seed2_fold10_2m.log`。

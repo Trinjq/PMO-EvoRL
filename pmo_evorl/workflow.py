@@ -112,7 +112,7 @@ class MOTD3Workflow(TD3Workflow):
         replay_capacity = config.replay_buffer_capacity
         if replay_buffer_type is LazyPreferenceHERReplayBuffer:
             replay_capacity //= config.her_weight_num + 1
-        replay_buffer = replay_buffer_type(
+        replay_buffer_kwargs = dict(
             capacity=replay_capacity,
             min_sample_timesteps=max(
                 config.batch_size, config.learning_start_timesteps
@@ -121,8 +121,10 @@ class MOTD3Workflow(TD3Workflow):
             her_start_timesteps=config.her_start_timesteps,
             weight_num=config.her_weight_num,
             seed=config.seed,
-            interleave=config.get("interleave_her", False),
         )
+        if replay_buffer_type is PreferenceHERReplayBuffer:
+            replay_buffer_kwargs["interleave"] = config.get("interleave_her", False)
+        replay_buffer = replay_buffer_type(**replay_buffer_kwargs)
         eval_env = create_mo_walker2d_env(
             config.num_eval_envs,
             config.num_preference_workers,
