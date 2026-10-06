@@ -212,11 +212,11 @@ class MOTD3Workflow(TD3Workflow):
 
     def _multi_steps(self, state):
         """Run one host fold while checking the interpolator on device."""
-        check_iters = min(
-            int(self.config.fold_iters),
-            int(self.config.get("interpolator_check_iters", 10)),
+        fold_iters = int(self.config.fold_iters)
+        check_iters = math.gcd(
+            fold_iters, int(self.config.get("interpolator_check_iters", 10))
         )
-        num_checks = self.config.fold_iters // check_iters
+        num_checks = fold_iters // check_iters
 
         def check_chunk(state, _):
             def train_step(state, _):
