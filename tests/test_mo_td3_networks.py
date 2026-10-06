@@ -3,6 +3,7 @@
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import optax
 from evorl.sample_batch import SampleBatch
 from evorl.types import PyTreeDict
 
@@ -59,6 +60,13 @@ def main() -> None:
     leaves = jax.tree.leaves(gradients)
     assert all(bool(jnp.isfinite(leaf).all()) for leaf in leaves)
     assert float(jnp.sqrt(sum(jnp.square(x).sum() for x in leaves))) > 0.0
+    large_gradients = jtu.tree_map(lambda value: value * 1000.0, gradients)
+    raw_norm = optax.global_norm(large_gradients)
+    clipped_gradients, _ = optax.clip_by_global_norm(100.0).update(
+        large_gradients, optax.EmptyState()
+    )
+    assert float(raw_norm) > 100.0
+    assert bool(jnp.isclose(optax.global_norm(clipped_gradients), 100.0))
 
     target_q = jnp.array(
         [

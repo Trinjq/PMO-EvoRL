@@ -155,3 +155,37 @@ Replay add/sample 均保持在毫秒级；随着并行环境数增加，主要�
 | ParetoCount per repeat | 248 / 226 / 241 |
 
 该结果冻结了 v2 后续逐项实验的质量与墙钟参考。评估输出保存在实验室工作树 `outputs/pmo_phsl_v2/train/step1_baseline_640_2m/eval_cpu_1001/`；训练和评估日志分别为 `outputs/pmo_phsl_v2/logs/step1_baseline_640_2m.log` 与 `step1_baseline_640_2m_eval_1001.log`。其中 `source_*` 指标用于记录原始 1001-point preference 网格上的 mean return 前沿，不能与每重复评估后再取 Pareto 前沿的指标混用。
+
+### 2026-10-06 v2 Step 2：logical-group random warm-up
+
+提交 `41a81c9` 在相同 640-env、seed 1、2M raw-transition协议下恢复了10个 logical group 的随机 warm-up。每组在达到10,000条 group transitions 前使用均匀随机动作，之后使用 `actor(s,w)+exploration noise`；最终日志记录每组 `10,048` 条随机 transition，总随机 transition 为 `100,480`，policy transition 为 `1,947,520`，random action fraction 为 `4.90%`。这与 `10 × 10,000` 的 source 语义一致，超出部分来自每次 rollout 的64条 group transitions粒度。
+
+训练完成 `3,200 iterations / 2,049,920 raw transitions`，墙钟为 `2,614.16 s`。同一 checkpoint 在实验室 CPU MuJoCo 上以1001个 preference、每个preference 3个episode评估，评估墙钟为 `428.48 s`，结果如下：
+
+| 指标 | Step 1 baseline | Step 2 warm-up | 变化 |
+| --- | ---: | ---: | ---: |
+| Hypervolume | 4,508,179.11 | 4,380,114.58 | -2.84% |
+| Sparsity | 387.44 | 319.30 | -17.6% |
+| ParetoCount | 238 | 222 | -6.7% |
+| source HV | 4,485,636.28 | 4,348,070.88 | -3.07% |
+| source Sparsity | 303.66 | 228.98 | -24.6% |
+| source ParetoCount | 277 | 298 | +7.6% |
+
+Step 2 改善了 mean-return 网格的 source Sparsity，并提高了 source ParetoCount，但重复评估的 HV 和 ParetoCount 低于 Step 1，因此不能宣称整体质量优于 baseline。该结果作为 Step 3 logical-group interpolator 实验的新的可比锚点；训练输出保存在 `outputs/pmo_phsl_v2/train/step2_warmup_640_2m/`，日志为 `outputs/pmo_phsl_v2/logs/step2_warmup_640_2m.log` 和 `step2_warmup_640_2m_eval_1001.log`。
+
+### 2026-10-06 v2 Step 3：logical-group interpolator control
+
+提交 `c0dc2bc` 在 Step 2 warm-up 基础上，将 interpolator trigger 改为10个 logical group的聚合 episode count：每组对其 physical lanes 的累计 episode数求和后除以 lanes数取 floor，并以10组中的最小值触发 `key_update_interval=1`。训练日志显示 group count 会自然分化，例如最终为 `[9,9,9,10,10,10,10,11,11,12]`；这证明 trigger 不再使用 `episode_count.min()` 的640-lane物理语义。最终计数为 `key_evaluation_count=8`、`key_replacement_count=0`、`interpolator_refit_count=8`，Actor/Critic loss 全程 finite。
+
+训练完成 `3,200 iterations / 2,049,920 raw transitions`，墙钟为 `1,844.91 s`。1001个preference、每个preference 3个episode的实验室 CPU MuJoCo 评估耗时 `325.43 s`，结果如下：
+
+| 指标 | Step 1 baseline | Step 3 logical-group control | 变化 |
+| --- | ---: | ---: | ---: |
+| Hypervolume | 4,508,179.11 | 4,616,349.96 | +2.40% |
+| Sparsity | 387.44 | 423.97 | +9.4% |
+| ParetoCount | 238 | 154 | -35.3% |
+| source HV | 4,485,636.28 | 4,519,039.92 | +0.75% |
+| source Sparsity | 303.66 | 209.19 | -31.1% |
+| source ParetoCount | 277 | 191 | -31.0% |
+
+Step 3 提高了重复评估 HV 和 source Sparsity，但重复 ParetoCount 明显下降，不能据此宣称全面优于 baseline；其主要证据是修复了 logical-group episode 语义并控制了 key 更新频率。训练输出保存在 `outputs/pmo_phsl_v2/train/step3_logical_group_interpolator_640_2m/`，日志为 `outputs/pmo_phsl_v2/logs/step3_logical_group_interpolator_640_2m.log` 和 `step3_logical_group_interpolator_640_2m_eval_1001.log`。
