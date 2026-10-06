@@ -222,3 +222,18 @@ Step 6 的数学实现早于本轮计划：`fit_linear_rbf` 只在初始化或 i
 提交 `04aa6fe` 已将 CPU evaluator 升级为每个 repeat 独立计算 HV、Sparsity 和 ParetoCount，同时对 `mean return per preference` 计算 `source_hv`、`source_sparsity` 和 `source_pareto_count`。1001-point正式评估已在 Step 1、Step 2、Step 3 和 Step 5 完成；每次结果均保存三次 repeat 指标及其 ParetoCount。
 
 提交 `d51ec45` 进一步在 `returns.npz` 中保存 `preferences`、`evaluation_preference_grid`、`returns_per_repeat`、`mean_returns`、`pareto_mask`、`pareto_returns`、`objective_min/max/mean`、episode lengths 和 episode seeds；`metrics.json` 同步保存 objective statistics。实验室 artifact check 已验证这些数组实际存在（例如 `pareto_returns` 形状为 `(39,2)`，`objective_min` 形状为 `(2,)`），因此 Step 7 的 collapse 诊断和 preference→return 追溯要求均已覆盖。
+
+### v2 Step 8 前质量门：source-faithful 默认的多 seed 复核
+
+为判断是否可以启动 Step 8，当前安全默认配置（`interleave_her=false`、Step 2 warm-up、Step 3 logical-group interpolator、Step 4 clipping）在实验室 GPU 上补跑 seed 2 和 seed 3，均为 `2,049,920` raw transitions，并使用相同的 CPU MuJoCo `1001 preferences × 3 episodes` 评估协议。seed 2 的训练耗时为 `1,589.04 s`，seed 3 为 `2,197.88 s`；两次训练 loss 均保持 finite，但 seed 3 的最终迭代出现明显的 critic/actor loss 与梯度峰值。
+
+| 指标 | 冻结 baseline（seed 1） | 安全默认 seed 2 | 安全默认 seed 3 |
+| --- | ---: | ---: | ---: |
+| Hypervolume | 4,508,179.11 | 4,539,673.88 | 0.00 |
+| Sparsity | 387.44 | 413.67 | 16.82 |
+| ParetoCount | 238 | 267 | 9 |
+| source HV | 4,485,636.28 | 4,518,428.67 | 0.00 |
+| source Sparsity | 303.66 | 263.73 | 4.94 |
+| source ParetoCount | 277 | 318 | 16 |
+
+seed 2 相对冻结 baseline 的重复 HV 和 ParetoCount 分别提高 `0.70%` 和 `12.18%`，但 seed 3 的三个重复评估均为 `HV=0`，且目标值范围为 `[-22.66, -1.14] × [-54.84, -23.75]`，属于明确的 Pareto collapse。由于多 seed 质量未稳定，Step 8 的 GPU-native learner 实验不启动；正式默认仍保持 source-faithful 语义，并保留 seed 3 结果作为后续稳定性诊断入口。评估 artifacts 分别位于实验室工作树 `outputs/pmo_phsl_v2/eval/default_semantics_seed2_2m_1001/` 和 `outputs/pmo_phsl_v2/eval/default_semantics_seed3_2m_1001/`。
