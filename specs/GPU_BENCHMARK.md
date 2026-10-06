@@ -137,3 +137,21 @@ Replay add/sample 均保持在毫秒级；随着并行环境数增加，主要�
 在 `c011d84` 上用实验室 GPU 0 完成同一 2M raw-transition 训练，训练耗时 1299.47 s；CPU MuJoCo 评估得到 HV 4,273,817.98、Sparsity 1,939.32。相较 baseline，HV 下降且 Sparsity 恶化，因此该实现通过了 replay/workflow 回归，但未通过 Step 2 的学习质量门；正式默认配置继续保持 baseline 语义。
 
 同一提交的 640-env stage profile 显示 lazy buffer capacity 为 25,000、占用约 4.625 MB（eager 为 18.0 MB）；rollout、full iteration、key evaluation 的稳态中位数分别为 2.264 s、0.477 s、2.055 s。该内存收益不能抵消学习质量门失败。
+
+### 2026-10-06 v2 Step 1：640-env eager-HER 基线
+
+提交 `04aa6fe` 在实验室 GPU 上完成了当前 source-compatible eager-HER 基线：640 个环境、batch 256、Critic/transition 1.0、Actor/transition 0.1、seed 1、3,200 iterations，共 `2,049,920` 条 raw transitions。实验环境为 JAX 0.10.2、MuJoCo/MJX 3.14.0、Optax 0.2.8；训练墙钟为 `2,375.86 s`。
+
+训练配置中的 Pareto 网格仍为 `pareto_step_size=0.005`，即201个 preference；为满足 v2 评估协议，最终 checkpoint 另在实验室 CPU MuJoCo 上以 `step-size=0.001`、1001个 preference、每个 preference 3个 episode 评估。评估墙钟为 `533.18 s`，其中实际模拟与指标计算为 `531.06 s`。结果如下：
+
+| 指标 | 结果 |
+| --- | ---: |
+| Hypervolume（3次评估均值） | 4,508,179.11 |
+| Sparsity（3次评估均值） | 387.44 |
+| ParetoCount（3次评估均值取整） | 238 |
+| source HV（1001个 mean-return 点） | 4,485,636.28 |
+| source Sparsity | 303.66 |
+| source ParetoCount | 277 |
+| ParetoCount per repeat | 248 / 226 / 241 |
+
+该结果冻结了 v2 后续逐项实验的质量与墙钟参考。评估输出保存在实验室工作树 `outputs/pmo_phsl_v2/train/step1_baseline_640_2m/eval_cpu_1001/`；训练和评估日志分别为 `outputs/pmo_phsl_v2/logs/step1_baseline_640_2m.log` 与 `step1_baseline_640_2m_eval_1001.log`。其中 `source_*` 指标用于记录原始 1001-point preference 网格上的 mean return 前沿，不能与每重复评估后再取 Pareto 前沿的指标混用。

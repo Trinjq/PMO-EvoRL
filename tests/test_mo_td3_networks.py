@@ -157,6 +157,40 @@ def main() -> None:
     assert bool(jnp.isfinite(critic_metrics.critic_loss))
     assert bool(jnp.isfinite(actor_metrics.actor_loss))
 
+    grouped_agent = MOTD3Agent(
+        critic_network=critic,
+        actor_network=actor,
+        logical_group_count=2,
+        random_warmup_transitions=1,
+    )
+    grouped_state = grouped_agent.init(
+        obs_space, action_space, jax.random.PRNGKey(6)
+    )
+    grouped_state = grouped_state.replace(
+        extra_state=grouped_state.extra_state.replace(
+            logical_group_transition_count=jnp.array([0, 1], dtype=jnp.uint32)
+        )
+    )
+    grouped_key = jax.random.PRNGKey(7)
+    grouped_actions, _ = jax.jit(grouped_agent.compute_actions)(
+        grouped_state, SampleBatch(obs=batch.obs), grouped_key
+    )
+    policy_key, random_key = jax.random.split(grouped_key)
+    policy_actions = actor.apply(
+        grouped_state.params.actor_params, state, preference
+    )
+    policy_actions = policy_actions + jax.random.normal(
+        policy_key, policy_actions.shape
+    ) * grouped_agent.exploration_epsilon
+    random_actions = jax.random.uniform(
+        random_key, policy_actions.shape, minval=-1.0, maxval=1.0
+    )
+    expected_grouped = jnp.concatenate(
+        (random_actions[:4], jnp.clip(policy_actions[4:], -1.0, 1.0))
+    )
+    assert bool(jnp.allclose(grouped_actions, expected_grouped))
+    assert grouped_state.extra_state.logical_group_transition_count.shape == (2,)
+
     replay = PreferenceHERReplayBuffer(
         capacity=64,
         sample_batch_size=8,

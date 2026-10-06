@@ -252,6 +252,8 @@ class MOTD3Agent(Agent):
     policy_noise: float = 0.2
     clip_policy_noise: float = 0.5
     angle_coefficient: float = 10.0
+    logical_group_count: int = 1
+    random_warmup_transitions: int = 10_000
 
     def init(self, obs_space, action_space, key: chex.PRNGKey) -> AgentState:
         sample_key, critic_key, actor_key = jax.random.split(key, 3)
@@ -282,6 +284,15 @@ class MOTD3Agent(Agent):
                     normalize_objectives(WALKER2D_KEY_OBJECTIVES)
                 ),
                 interpolator_updates=jnp.ones((), dtype=jnp.uint32),
+                logical_group_transition_count=jnp.zeros(
+                    self.logical_group_count, dtype=jnp.uint32
+                ),
+                logical_group_random_transition_count=jnp.zeros(
+                    self.logical_group_count, dtype=jnp.uint32
+                ),
+                logical_group_policy_transition_count=jnp.zeros(
+                    self.logical_group_count, dtype=jnp.uint32
+                ),
             ),
         )
 
@@ -289,10 +300,24 @@ class MOTD3Agent(Agent):
         self, agent_state: AgentState, sample_batch: SampleBatch, key: chex.PRNGKey
     ) -> tuple[Action, PolicyExtraInfo]:
         obs = sample_batch.obs
-        actions = self.actor_network.apply(
+        policy_actions = self.actor_network.apply(
             agent_state.params.actor_params, obs.state, obs.preference
         )
-        actions += jax.random.normal(key, actions.shape) * self.exploration_epsilon
+        policy_key, random_key = jax.random.split(key)
+        policy_actions += (
+            jax.random.normal(policy_key, policy_actions.shape)
+            * self.exploration_epsilon
+        )
+        random_actions = jax.random.uniform(
+            random_key, policy_actions.shape, minval=-1.0, maxval=1.0
+        )
+        group_size = obs.state.shape[0] // self.logical_group_count
+        group_index = jnp.arange(obs.state.shape[0]) // group_size
+        warmup = (
+            agent_state.extra_state.logical_group_transition_count[group_index]
+            < self.random_warmup_transitions
+        )
+        actions = jnp.where(warmup[:, None], random_actions, policy_actions)
         return jnp.clip(actions, -1.0, 1.0), PyTreeDict()
 
     def evaluate_actions(

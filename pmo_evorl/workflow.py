@@ -58,6 +58,10 @@ class MOTD3Workflow(TD3Workflow):
             policy_noise=config.policy_noise,
             clip_policy_noise=config.clip_policy_noise,
             angle_coefficient=config.angle_coefficient,
+            logical_group_count=config.num_preference_workers,
+            random_warmup_transitions=config.get(
+                "random_warmup_transitions", 10_000
+            ),
         )
         optimizer = optax.chain(
             optax.clip_by_global_norm(config.optimizer.grad_clip_norm),
@@ -133,9 +137,37 @@ class MOTD3Workflow(TD3Workflow):
 
     def step(self, state):
         if not self.config.get("sample_many", False):
-            return super().step(state)
+            metrics, next_state = super().step(state)
+        else:
+            metrics, next_state = self._step_sample_many(state)
+        return metrics, self._advance_logical_group_counters(state, next_state)
 
-        return self._step_sample_many(state)
+    def _advance_logical_group_counters(self, state, next_state):
+        extra_state = state.agent_state.extra_state
+        lanes_per_group = self.config.num_envs // self.config.num_preference_workers
+        transitions = jnp.asarray(
+            self.config.rollout_length * lanes_per_group, dtype=jnp.uint32
+        )
+        in_warmup = (
+            extra_state.logical_group_transition_count
+            < self.config.get("random_warmup_transitions", 10_000)
+        )
+        next_extra_state = next_state.agent_state.extra_state.replace(
+            logical_group_transition_count=(
+                extra_state.logical_group_transition_count + transitions
+            ),
+            logical_group_random_transition_count=(
+                extra_state.logical_group_random_transition_count
+                + jnp.where(in_warmup, transitions, 0)
+            ),
+            logical_group_policy_transition_count=(
+                extra_state.logical_group_policy_transition_count
+                + jnp.where(~in_warmup, transitions, 0)
+            ),
+        )
+        return next_state.replace(
+            agent_state=next_state.agent_state.replace(extra_state=next_extra_state)
+        )
 
     def _step_sample_many(self, state):
         key, rollout_key, learn_key = jax.random.split(state.key, num=3)
@@ -436,6 +468,12 @@ class MOTD3Workflow(TD3Workflow):
                     "actor_loss": train_metrics.actor_loss.tolist(),
                     "interpolator_updates": (
                         state.agent_state.extra_state.interpolator_updates.tolist()
+                    ),
+                    "random_transitions": int(
+                        state.agent_state.extra_state.logical_group_random_transition_count.sum()
+                    ),
+                    "policy_transitions": int(
+                        state.agent_state.extra_state.logical_group_policy_transition_count.sum()
                     ),
                 },
                 flush=True,
