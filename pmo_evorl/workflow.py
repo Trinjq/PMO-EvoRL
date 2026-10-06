@@ -1,6 +1,7 @@
 """EvoRL workflow wiring for continuous PD-MORL."""
 
 import time
+from typing import NamedTuple
 
 import chex
 import jax
@@ -35,6 +36,39 @@ from pmo_evorl.mo_td3 import (
 from pmo_evorl.networks import PreferenceActor, TwinVectorCritic
 
 
+class GradientNormState(NamedTuple):
+    inner_state: object
+    raw_norm: jax.Array
+    clipped_norm: jax.Array
+    max_raw_norm: jax.Array
+    max_clipped_norm: jax.Array
+
+
+def _logging_gradient_transformation(optimizer, max_norm):
+    clip = optax.clip_by_global_norm(max_norm)
+
+    def init(params):
+        zero = jnp.zeros((), dtype=jnp.float32)
+        return GradientNormState(optimizer.init(params), zero, zero, zero, zero)
+
+    def update(updates, state, params=None):
+        raw_norm = optax.global_norm(updates)
+        clipped_updates, _ = clip.update(updates, optax.EmptyState())
+        clipped_norm = optax.global_norm(clipped_updates)
+        updates, inner_state = optimizer.update(
+            updates, state.inner_state, params
+        )
+        return updates, GradientNormState(
+            inner_state,
+            raw_norm,
+            clipped_norm,
+            jnp.maximum(state.max_raw_norm, raw_norm),
+            jnp.maximum(state.max_clipped_norm, clipped_norm),
+        )
+
+    return optax.GradientTransformation(init, update)
+
+
 class MORLEvaluateMetric(MetricBase):
     hypervolume: chex.Array
     sparsity: chex.Array
@@ -63,9 +97,12 @@ class MOTD3Workflow(TD3Workflow):
                 "random_warmup_transitions", 10_000
             ),
         )
-        optimizer = optax.chain(
-            optax.clip_by_global_norm(config.optimizer.grad_clip_norm),
-            optax.adam(config.optimizer.lr),
+        optimizer = _logging_gradient_transformation(
+            optax.chain(
+                optax.clip_by_global_norm(config.optimizer.grad_clip_norm),
+                optax.adam(config.optimizer.lr),
+            ),
+            config.optimizer.grad_clip_norm,
         )
         replay_buffer_type = (
             LazyPreferenceHERReplayBuffer
@@ -527,6 +564,24 @@ class MOTD3Workflow(TD3Workflow):
                     ),
                     "interpolator_refit_count": int(
                         state.agent_state.extra_state.interpolator_refit_count
+                    ),
+                    "actor_raw_grad_norm": float(
+                        state.opt_state.actor.raw_norm
+                    ),
+                    "actor_clipped_grad_norm": float(
+                        state.opt_state.actor.clipped_norm
+                    ),
+                    "critic_raw_grad_norm": float(
+                        state.opt_state.critic.raw_norm
+                    ),
+                    "critic_clipped_grad_norm": float(
+                        state.opt_state.critic.clipped_norm
+                    ),
+                    "actor_max_raw_grad_norm": float(
+                        state.opt_state.actor.max_raw_norm
+                    ),
+                    "critic_max_raw_grad_norm": float(
+                        state.opt_state.critic.max_raw_norm
                     ),
                 },
                 flush=True,
