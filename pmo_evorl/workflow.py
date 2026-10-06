@@ -1,7 +1,7 @@
 """EvoRL workflow wiring for continuous PD-MORL."""
 
-import time
 import math
+import time
 from typing import NamedTuple
 
 import chex
@@ -213,8 +213,8 @@ class MOTD3Workflow(TD3Workflow):
     def _multi_steps(self, state):
         """Run one host fold while checking the interpolator on device."""
         check_iters = min(
-            self.config.fold_iters,
-            self.config.get("interpolator_check_iters", 10),
+            int(self.config.fold_iters),
+            int(self.config.get("interpolator_check_iters", 10)),
         )
         num_checks = self.config.fold_iters // check_iters
 

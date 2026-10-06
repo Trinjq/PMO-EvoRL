@@ -37,6 +37,7 @@ optimizer:
 
 total_timesteps: 1000000
 fold_iters: 100
+interpolator_check_iters: 10
 eval_episodes: 3
 pareto_step_size: 0.005
 pareto_eval_batch_size: 201
