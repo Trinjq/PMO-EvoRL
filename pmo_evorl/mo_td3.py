@@ -153,7 +153,11 @@ class LazyPreferenceHERReplayBuffer(ReplayBuffer):
 
     def init(self, spec):
         her_available = jnp.zeros((), dtype=bool)
-        env_extras = spec.extras.env_extras.replace(her_available=her_available)
+        her_seed = jnp.zeros((), dtype=jnp.uint32)
+        env_extras = spec.extras.env_extras.replace(
+            her_available=her_available,
+            her_seed=her_seed,
+        )
         return super().init(
             spec.replace(extras=spec.extras.replace(env_extras=env_extras))
         )
@@ -168,28 +172,56 @@ class LazyPreferenceHERReplayBuffer(ReplayBuffer):
             + jnp.arange(1, batch_size + 1, dtype=jnp.int32)
             > self.her_start_timesteps
         )
-        env_extras = xs.extras.env_extras.replace(her_available=her_available)
+        her_seed = jnp.asarray(
+            buffer_state.current_index, dtype=jnp.uint32
+        ) + jnp.arange(batch_size, dtype=jnp.uint32)
+        env_extras = xs.extras.env_extras.replace(
+            her_available=her_available,
+            her_seed=her_seed,
+        )
         xs = xs.replace(extras=xs.extras.replace(env_extras=env_extras))
         return super().add(buffer_state, xs)
 
     def _relabel(self, batch, key):
-        preference_key, her_key = jax.random.split(key)
-        preference = jnp.abs(
-            jax.random.normal(
-                preference_key,
-                (*batch.obs.preference.shape[:-1], batch.obs.preference.shape[-1]),
+        her_key, index_key = jax.random.split(key)
+        her_seed = batch.extras.env_extras.her_seed
+        preference_dim = batch.obs.preference.shape[-1]
+
+        def make_preference(seed):
+            preference = jnp.abs(
+                jax.random.normal(
+                    jax.random.fold_in(jax.random.PRNGKey(self.seed), seed),
+                    (self.weight_num, preference_dim),
+                )
             )
+            preference /= preference.sum(axis=-1, keepdims=True)
+            return jnp.round(preference, decimals=3)
+
+        preferences = jax.vmap(make_preference)(her_seed.reshape(-1))
+        preferences = preferences.reshape(
+            *her_seed.shape, self.weight_num, preference_dim
         )
-        preference /= preference.sum(axis=-1, keepdims=True)
-        preference = jnp.round(preference, decimals=3)
         her_probability = self.weight_num / (self.weight_num + 1)
         use_her = batch.extras.env_extras.her_available & jax.random.bernoulli(
             her_key,
             p=her_probability,
             shape=batch.extras.env_extras.her_available.shape,
         )
+        her_index = jax.random.randint(
+            index_key,
+            batch.extras.env_extras.her_available.shape,
+            minval=0,
+            maxval=self.weight_num,
+        )
+        her_preference = jnp.take_along_axis(
+            preferences,
+            her_index[..., None, None],
+            axis=-2,
+        )[..., 0, :]
         obs = batch.obs.replace(
-            preference=jnp.where(use_her[..., None], preference, batch.obs.preference)
+            preference=jnp.where(
+                use_her[..., None], her_preference, batch.obs.preference
+            )
         )
         return batch.replace(obs=obs)
 

@@ -179,6 +179,7 @@ def main() -> None:
     lazy_state = lazy_replay.init(jtu.tree_map(lambda value: value[0], batch))
     lazy_state = jax.jit(lazy_replay.add)(lazy_state, batch)
     assert int(lazy_state.buffer_size) == batch_size
+    assert lazy_state.data.extras.env_extras.her_seed.shape[0] == lazy_replay.capacity
     lazy_batch = jax.jit(lazy_replay.sample)(
         lazy_state, jax.random.PRNGKey(5)
     )

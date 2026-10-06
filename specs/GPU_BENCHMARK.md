@@ -101,3 +101,34 @@ MJX-Warp 1.17.0 的单环境 build/forward/4-substep JIT 与小批量 Walker2d �
 640环境候选的 seeds 1/2 均完成3,009,920条原始 transition，训练耗时分别为2291.47和2092.14秒，Actor/Critic loss 均保持有限。统一 CPU MuJoCo `201 preferences × 3 episodes` 评估得到：seed 1 的 Hypervolume 为4,172,738.08、Sparsity为1,168.51；seed 2 的 Hypervolume 为4,922,693.94、Sparsity为1,867.46。平均 Hypervolume 为4,547,716.01，是1M新 B0 的124.0%，两个 seed 均高于1M质量锚点。
 
 两项CPU评估并行运行并争用主机CPU，各耗时约168秒，因此该评估耗时只记录为本次实际墙钟，不用于单进程性能归因。候选质量稳定，已晋级最终1000万步 seeds 1/2/3。
+
+## 2026-10-06 优化方案实验室验证（2M raw transitions）
+
+本节记录优化方案当前提交 `d9fed35` 的实验室验证结果。环境为 JAX 0.10.2、MuJoCo/MJX 3.14.0、Optax 0.2.8；分模块 profiling 使用 GPU 0，正式训练使用 GPU 1，均设置 `CUDA_VISIBLE_DEVICES`，实验期间服务器仍为共享状态。所有质量结果均来自实验室 CPU MuJoCo 的 `201 preferences × 3 episodes` 离线协议；训练实际完成 `3,200 iterations / 2,049,920 raw transitions`。
+
+### Step 1 分模块 profiling
+
+`benchmark_components.py` 使用 capacity 100,000、10 steps、3 个稳态样本，HER 从第 0 个 transition 生效。`full_iteration` 和 `rollout` 的稳态中位数如下；完整 JSON 保存在实验室工作树 `outputs/optimization_20261006/logs/components_*_her0_capacity.json`。
+
+| 并行环境数 | rollout/s | full iteration/s | key evaluation/s |
+| ---: | ---: | ---: | ---: |
+| 10 | 0.668 | 0.060 | 3.018 |
+| 80 | 1.383 | 0.133 | 2.605 |
+| 160 | 1.305 | 0.150 | 2.666 |
+| 320 | 2.408 | 0.305 | 3.166 |
+| 640 | 3.823 | 0.436 | 3.309 |
+| 1280 | 7.677 | 0.693 | 2.601 |
+
+Replay add/sample 均保持在毫秒级；随着并行环境数增加，主要增长来自 MJX rollout 与完整 learner iteration，而不是 Replay Buffer 操作。capacity 100,000 下，eager HER 分配约 18.0 MB，Lazy HER 的等 raw-equivalent capacity 为 25,000、分配约 4.525 MB，内存减少约 74.9%。
+
+### 2M 质量与墙钟门
+
+以下三组训练使用 640 环境、seed 1、相同 raw transition 预算和相同 CPU 评估协议。baseline 为 eager HER、逐次 sample；source-parity 为 Lazy HER + cached RBF + `sample_many()`；GPU-oriented 进一步使用 batch 1024、critic UTD 0.25。
+
+| 版本 | 训练时间/s | HV | Sparsity | 结论 |
+| --- | ---: | ---: | ---: | --- |
+| baseline | 1938.60 | 4,504,328.40 | 880.73 | 参考 |
+| source-parity optimized | 1854.65 | 4,528,864.53 | 2,245.78 | 不通过：Sparsity 明显恶化 |
+| GPU-oriented | 1789.72 | 3,434,573.92 | 2,690.98 | 不通过：HV 与 Sparsity 均恶化 |
+
+因此当前实现可以保留 Lazy HER 的内存/工程实验代码和 profiling 工具，但不能把 source-parity 或 GPU-oriented 配置宣称为已验证的默认训练方案。后续若继续推进，应先用固定随机流或逐项消融隔离 Lazy HER 与 `sample_many()` 对 Pareto 解分布的影响，再重新申请质量门；在此之前，正式默认配置保持 baseline 语义。
