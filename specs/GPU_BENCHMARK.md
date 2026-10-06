@@ -132,3 +132,8 @@ Replay add/sample 均保持在毫秒级；随着并行环境数增加，主要�
 | GPU-oriented | 1789.72 | 3,434,573.92 | 2,690.98 | 不通过：HV 与 Sparsity 均恶化 |
 
 因此当前实现可以保留 Lazy HER 的内存/工程实验代码和 profiling 工具，但不能把 source-parity 或 GPU-oriented 配置宣称为已验证的默认训练方案。后续若继续推进，应先用固定随机流或逐项消融隔离 Lazy HER 与 `sample_many()` 对 Pareto 解分布的影响，再重新申请质量门；在此之前，正式默认配置保持 baseline 语义。
+### Fixed-seed Lazy HER 消融
+
+在 `c011d84` 上用实验室 GPU 0 完成同一 2M raw-transition 训练，训练耗时 1299.47 s；CPU MuJoCo 评估得到 HV 4,273,817.98、Sparsity 1,939.32。相较 baseline，HV 下降且 Sparsity 恶化，因此该实现通过了 replay/workflow 回归，但未通过 Step 2 的学习质量门；正式默认配置继续保持 baseline 语义。
+
+同一提交的 640-env stage profile 显示 lazy buffer capacity 为 25,000、占用约 4.625 MB（eager 为 18.0 MB）；rollout、full iteration、key evaluation 的稳态中位数分别为 2.264 s、0.477 s、2.055 s。该内存收益不能抵消学习质量门失败。
