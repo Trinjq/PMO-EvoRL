@@ -11,9 +11,9 @@ from pathlib import Path
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 os.environ["JAX_PLATFORMS"] = "cpu"
 
+import jax
 import mujoco
 import numpy as np
-import jax
 import orbax.checkpoint as ocp
 
 _XML_PATH = (
@@ -138,6 +138,11 @@ def sparsity(points: np.ndarray) -> float:
     )
 
 
+def pareto_count(points: np.ndarray) -> int:
+    """Return the number of non-dominated points in a Pareto front."""
+    return int(nondominated_mask(points).sum())
+
+
 def reset(model: mujoco.MjModel, seed: int) -> mujoco.MjData:
     rng = np.random.RandomState(seed)
     data = mujoco.MjData(model)
@@ -236,6 +241,11 @@ def main() -> None:
     evaluation_seconds = time.perf_counter() - evaluation_started
     repeat_hypervolumes = [hypervolume_2d(repeat_returns) for repeat_returns in returns]
     repeat_sparsities = [sparsity(repeat_returns) for repeat_returns in returns]
+    repeat_pareto_counts = [pareto_count(repeat_returns) for repeat_returns in returns]
+    mean_returns = returns.mean(axis=0)
+    source_hypervolume = hypervolume_2d(mean_returns)
+    source_sparsity = sparsity(mean_returns)
+    source_pareto_count = pareto_count(mean_returns)
     metrics = {
         "checkpoint": str(args.checkpoint.resolve()),
         "preferences": len(preferences),
@@ -253,8 +263,13 @@ def main() -> None:
         "reset_noise_scale": RESET_NOISE_SCALE,
         "hypervolume_per_repeat": repeat_hypervolumes,
         "sparsity_per_repeat": repeat_sparsities,
+        "pareto_count_per_repeat": repeat_pareto_counts,
         "hypervolume": float(np.mean(repeat_hypervolumes)),
         "sparsity": float(np.mean(repeat_sparsities)),
+        "pareto_count": int(np.mean(repeat_pareto_counts)),
+        "source_hv": source_hypervolume,
+        "source_sparsity": source_sparsity,
+        "source_pareto_count": source_pareto_count,
         "episode_length_mean": float(lengths.mean()),
         "episode_length_max": int(lengths.max()),
         "restore_seconds": restore_seconds,
@@ -266,6 +281,7 @@ def main() -> None:
         args.output_dir / "returns.npz",
         preferences=preferences,
         returns_per_repeat=returns,
+        mean_returns=mean_returns,
         episode_lengths=lengths.reshape(args.repeats, len(preferences)),
         episode_seeds=episode_seeds.reshape(args.repeats, len(preferences)),
     )
