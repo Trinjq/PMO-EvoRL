@@ -209,6 +209,8 @@ Step 3 提高了重复评估 HV 和 source Sparsity，但重复 ParetoCount 明�
 
 质量门失败后，正式 fast 配置将 `interleave_her` 固定为 `false`，恢复 Step 1/Step 3 的 baseline 写入顺序；交错版本仍可通过 `train.py --interleave-her` 显式复现实验，不再无条件进入默认训练。
 
+实验室默认语义 smoke 已复核该开关：64k raw transitions、100 iterations，`random_transition_count=64000`、`policy_transition_count=0`，Actor/Critic loss 均 finite，checkpoint 正常写出；训练日志中的 `critic_max_clipped_grad_norm=100.000015` 也确认 clipping 链路仍生效。输出位于 `outputs/pmo_phsl_v2/train/default_semantics_smoke_64k/`，日志为 `outputs/pmo_phsl_v2/logs/default_semantics_smoke_64k.log`。
+
 ### v2 Step 4 与 Step 6：已有实现的直接验证
 
 Step 4 的 global-L2 clipping 在当前 workflow 中由 `clip_by_global_norm(100.0)` 明确包在 Actor/Critic 共用 optimizer chain 的最前端。提交 `ac8005d` 增加了 raw/clipped gradient norm 统计；实验室 64k raw-transition 短训练日志记录到 Critic 的累计 raw norm `1297.10`，而 clipping 阈值为100，说明统计路径确实覆盖了需要裁剪的梯度；该短训练中 loss finite。Step 4 的 2M质量结果已由 Step 5 的同一 optimizer chain 共同覆盖，未另行重复一份仅改日志的2M训练。
