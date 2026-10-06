@@ -293,6 +293,12 @@ class MOTD3Agent(Agent):
                 logical_group_policy_transition_count=jnp.zeros(
                     self.logical_group_count, dtype=jnp.uint32
                 ),
+                logical_group_episode_count=jnp.zeros(
+                    self.logical_group_count, dtype=jnp.uint32
+                ),
+                key_evaluation_count=jnp.zeros((), dtype=jnp.uint32),
+                key_replacement_count=jnp.zeros((), dtype=jnp.uint32),
+                interpolator_refit_count=jnp.zeros((), dtype=jnp.uint32),
             ),
         )
 

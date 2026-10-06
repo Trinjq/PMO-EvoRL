@@ -367,6 +367,10 @@ class MOTD3Workflow(TD3Workflow):
 
     def _update_interpolator(self, state, completed):
         candidate = self._evaluate_key_objectives(state.agent_state)
+        old_score = (
+            KEY_PREFERENCES * state.agent_state.extra_state.key_objectives
+        ).sum(axis=-1)
+        new_score = (KEY_PREFERENCES * candidate).sum(axis=-1)
         raw, projected = update_key_objectives(
             state.agent_state.extra_state.key_objectives, candidate
         )
@@ -374,13 +378,37 @@ class MOTD3Workflow(TD3Workflow):
             key_objectives=raw,
             rbf_coefficients=fit_linear_rbf(projected),
             interpolator_updates=completed,
+            key_evaluation_count=(
+                state.agent_state.extra_state.key_evaluation_count + 1
+            ),
+            key_replacement_count=(
+                state.agent_state.extra_state.key_replacement_count
+                + (new_score > old_score).sum().astype(jnp.uint32)
+            ),
+            interpolator_refit_count=(
+                state.agent_state.extra_state.interpolator_refit_count + 1
+            ),
         )
         return state.replace(
             agent_state=state.agent_state.replace(extra_state=extra_state)
         )
 
     def _maybe_update_interpolator(self, state):
-        completed = state.env_state.info.episode_count.min().tolist()
+        episode_count = state.env_state.info.episode_count
+        lanes_per_group = self.config.num_envs // self.config.num_preference_workers
+        group_episode_count = (
+            episode_count.reshape(self.config.num_preference_workers, lanes_per_group)
+            .sum(axis=1)
+            // lanes_per_group
+        ).astype(jnp.uint32)
+        state = state.replace(
+            agent_state=state.agent_state.replace(
+                extra_state=state.agent_state.extra_state.replace(
+                    logical_group_episode_count=group_episode_count
+                )
+            )
+        )
+        completed = group_episode_count.min().tolist()
         previous = state.agent_state.extra_state.interpolator_updates.tolist()
         if completed >= previous + self.config.key_update_interval:
             state = self._update_interpolator(
@@ -474,6 +502,31 @@ class MOTD3Workflow(TD3Workflow):
                     ),
                     "policy_transitions": int(
                         state.agent_state.extra_state.logical_group_policy_transition_count.sum()
+                    ),
+                    "random_transition_count_per_group": (
+                        state.agent_state.extra_state.logical_group_random_transition_count.tolist()
+                    ),
+                    "policy_transition_count_per_group": (
+                        state.agent_state.extra_state.logical_group_policy_transition_count.tolist()
+                    ),
+                    "random_action_fraction": float(
+                        state.agent_state.extra_state.logical_group_random_transition_count.sum()
+                        / jnp.maximum(
+                            state.agent_state.extra_state.logical_group_transition_count.sum(),
+                            1,
+                        )
+                    ),
+                    "group_episode_count": (
+                        state.agent_state.extra_state.logical_group_episode_count.tolist()
+                    ),
+                    "key_evaluation_count": int(
+                        state.agent_state.extra_state.key_evaluation_count
+                    ),
+                    "key_replacement_count": int(
+                        state.agent_state.extra_state.key_replacement_count
+                    ),
+                    "interpolator_refit_count": int(
+                        state.agent_state.extra_state.interpolator_refit_count
                     ),
                 },
                 flush=True,
