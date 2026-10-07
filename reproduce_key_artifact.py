@@ -77,11 +77,26 @@ def main() -> None:
         state = workflow.init(jax.random.PRNGKey(seed))
         initial_timesteps = int(jax.device_get(state.metrics.sampled_timesteps))
         remaining = max(args.total_timesteps - initial_timesteps, 0)
-        full_folds, tail_steps = divmod(remaining, args.fold_iters)
         history = []
         best_score = -math.inf
         best_objective = None
         next_eval_episode = 100
+
+        def advance(current_state, max_timesteps, episode_target):
+            def condition(loop_state):
+                return (loop_state.metrics.sampled_timesteps < max_timesteps) & (
+                    loop_state.metrics.sampled_episodes < episode_target
+                )
+
+            def body(loop_state):
+                _, next_state = workflow.step(loop_state)
+                return next_state
+
+            return jax.lax.while_loop(
+                condition, body, current_state
+            )
+
+        advance = jax.jit(advance, donate_argnums=(0,))
 
         def record_evaluation():
             nonlocal best_score, best_objective, next_eval_episode
@@ -111,19 +126,12 @@ def main() -> None:
             while episodes >= next_eval_episode:
                 record_evaluation()
 
-        for _ in range(full_folds):
-            _, state = workflow._multi_steps(state)
-            maybe_evaluate()
-
-        if tail_steps:
-            def run_tail(current_state):
-                def one_step(carry, _):
-                    _, next_state = workflow.step(carry)
-                    return next_state, None
-
-                return jax.lax.scan(one_step, current_state, None, length=tail_steps)[0]
-
-            state = jax.jit(run_tail)(state)
+        while int(jax.device_get(state.metrics.sampled_timesteps)) < args.total_timesteps:
+            state = advance(
+                state,
+                jnp.asarray(args.total_timesteps, dtype=jnp.uint32),
+                jnp.asarray(next_eval_episode, dtype=jnp.uint32),
+            )
             maybe_evaluate()
 
         final_objective = jax.device_get(workflow.evaluate_fixed(state.agent_state))
