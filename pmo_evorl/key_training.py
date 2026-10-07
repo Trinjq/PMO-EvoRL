@@ -370,4 +370,7 @@ class KeyTD3Workflow(TD3Workflow):
     @classmethod
     def enable_jit(cls):
         super().enable_jit()
+        cls._multi_steps = jax.jit(
+            cls._multi_steps, static_argnums=(0,), donate_argnums=(1,)
+        )
         cls.evaluate_fixed = jax.jit(cls.evaluate_fixed, static_argnums=(0,))
